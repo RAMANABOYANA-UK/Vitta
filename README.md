@@ -13,7 +13,7 @@ Empowering women to build successful careers while prioritizing their well-being
 
 ## 🧠 Machine Learning Features
 
-The AI agent uses a lightweight, fully-offline ML engine (`backend/utils/aiHelper.js`):
+The AI agent uses a lightweight, fully-offline ML engine:
 
 | Feature                           | Technique                                                                       |
 | --------------------------------- | ------------------------------------------------------------------------------- |
