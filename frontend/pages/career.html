@@ -1,0 +1,220 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Career AI · Aviraa</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,400;14..32,500;14..32,600;14..32,700&family=Playfair+Display:ital,wght@0,500;0,600;0,700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+  <link rel="stylesheet" href="../css/app.css">
+</head>
+<body>
+  <div class="app-container">
+    
+    <!-- Sidebar -->
+    <nav class="sidebar">
+      <a href="../index.html" class="logo-area">
+        <i class="fas fa-seedling"></i>
+        <span>Aviraa</span>
+      </a>
+      <ul class="nav-menu">
+        <li><a href="../app.html" class="nav-item"><i class="fas fa-th-large"></i> <span>Dashboard</span></a></li>
+        <li><a href="career.html" class="nav-item active"><i class="fas fa-leaf"></i> <span>Career AI</span></a></li>
+        <li><a href="wellness.html" class="nav-item"><i class="fas fa-spa"></i> <span>Wellness</span></a></li>
+        <li><a href="companion.html" class="nav-item"><i class="fas fa-comments"></i> <span>AI Companion</span></a></li>
+        <li><a href="opportunities.html" class="nav-item"><i class="fas fa-route"></i> <span>Opportunities</span></a></li>
+        <li><a href="mentorship.html" class="nav-item"><i class="fas fa-users-line"></i> <span>Mentorship</span></a></li>
+        <li><a href="../profile.html" class="nav-item"><i class="fas fa-user"></i> <span>Profile</span></a></li>
+      </ul>
+      <div class="sidebar-footer">
+        <div class="user-card" style="cursor:pointer" onclick="window.location.href='../profile.html'">
+          <div class="avatar">P</div>
+          <div class="user-info">
+            <div class="name">Loading...</div>
+            <div class="plan">Database profile</div>
+          </div>
+        </div>
+      </div>
+        <div style="margin-top:12px; text-align:center;">
+          <a href="#" id="logoutBtn" class="nav-item" style="padding:8px; font-size:0.85rem; color:var(--rose);"><i class="fas fa-sign-out-alt"></i> <span>Logout</span></a>
+        </div>
+    </nav>
+
+    <!-- Main Content -->
+    <main class="main-content">
+      <div class="page-header" style="display:flex; justify-shadow:space-between; align-items:center; flex-wrap:wrap; gap:16px;">
+        <div>
+          <h1><i class="fas fa-leaf" style="color:var(--rose);"></i> Career AI Coach</h1>
+          <p>Your personalized AI career companion — guiding every step of your professional journey.</p>
+        </div>
+        <div style="display:flex; gap:10px;">
+          <button class="btn" style="background:var(--rose); color:white; border-radius:12px; padding:10px 16px; border:none; cursor:pointer; font-size:0.88rem;" onclick="exportCareerPDF()">
+            <i class="fas fa-file-pdf"></i> Export PDF Report
+          </button>
+          <button class="btn" style="background:var(--sage); color:white; border-radius:12px; padding:10px 16px; border:none; cursor:pointer; font-size:0.88rem;" onclick="exportCareerCSV()">
+            <i class="fas fa-file-csv"></i> Export CSV Data
+          </button>
+        </div>
+      </div>
+
+      <!-- Stats Row -->
+      <div class="grid-3">
+        <div class="stat-card">
+          <div class="stat-value" id="careerGoalProgress">0%</div>
+          <div class="stat-label">Goal Progress</div>
+          <div class="progress-bar"><div class="progress-fill rose" id="careerGoalProgressBar" style="width:0%"></div></div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-value" id="careerSkillsCount">0</div>
+          <div class="stat-label">Skills Acquired</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-value" id="careerCoursesCount">0</div>
+          <div class="stat-label">Courses in Progress</div>
+        </div>
+      </div>
+
+      <!-- Career Roadmap -->
+      <div class="card">
+        <div class="card-header">
+          <h2><i class="fas fa-road"></i> Your Career Roadmap</h2>
+          <span class="tag tag-rose" id="careerTrackTag">Loading track...</span>
+        </div>
+        
+        <div class="roadmap">
+          <div class="roadmap-step completed">
+            <div class="step-indicator"><i class="fas fa-check"></i></div>
+            <div class="step-content">
+              <h4 id="careerPreviousRole">Loading...</h4>
+              <p id="careerPreviousRoleMeta">Completed · --</p>
+            </div>
+          </div>
+          <div class="roadmap-step completed">
+            <div class="step-indicator"><i class="fas fa-check"></i></div>
+            <div class="step-content">
+              <h4 id="careerCurrentRole">Current role</h4>
+              <p id="careerCurrentRoleMeta">Current Role · --</p>
+            </div>
+          </div>
+          <div class="roadmap-step active">
+            <div class="step-indicator"><i class="fas fa-flag"></i></div>
+            <div class="step-content">
+              <h4 id="careerTargetRole">Target role</h4>
+              <p id="careerTargetRoleMeta">Target: -- · --</p>
+              <div class="progress-bar"><div class="progress-fill rose" id="careerTargetRoleBar" style="width:0%"></div></div>
+            </div>
+          </div>
+          <div class="roadmap-step">
+            <div class="step-indicator"><i class="fas fa-star"></i></div>
+            <div class="step-content">
+              <h4 id="careerLongTermRole">Long-term goal</h4>
+              <p id="careerLongTermRoleMeta">Long-term goal · --</p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Two Column Layout -->
+      <div class="grid-2">
+        
+        <!-- Skill Gap Analysis -->
+        <div class="card">
+          <div class="card-header">
+            <h2><i class="fas fa-chart-bar"></i> Skill Gap Analysis</h2>
+          </div>
+<div class="skill-list">
+            <div id="careerSkillsList"></div>
+          </div>
+          <button class="btn btn-outline" id="viewReportBtn" style="margin-top:16px; width:100%;">View Detailed Report</button>
+        </div>
+
+        <!-- AI Recommendations -->
+        <div class="card">
+          <div class="card-header">
+            <h2><i class="fas fa-lightbulb"></i> AI Recommendations</h2>
+          </div>
+          <div class="ai-insight">
+            <div class="message bot" id="careerInsightPrimary">
+              <strong>💡 Skill Priority:</strong> Focus on Team Leadership next. I recommend the "Leading Product Teams" course on Coursera — it directly addresses your gap for Senior PM roles.
+            </div>
+          </div>
+          <div class="ai-insight">
+            <div class="message bot" id="careerInsightSecondary">
+              <strong>📊 Market Insight:</strong> Senior PM roles in India have grown 34% this year. Companies are prioritizing candidates with cross-functional experience.
+            </div>
+          </div>
+          <div class="ai-insight">
+            <div class="message bot" id="careerInsightTertiary">
+              <strong>🎯 Quick Win:</strong> Update your LinkedIn headline to include "Product Strategy & Analytics". This alone can increase recruiter outreach by 40%.
+            </div>
+          </div>
+<button class="btn btn-primary" id="getPlanBtn" style="margin-top:16px; width:100%;">
+            <i class="fas fa-robot"></i> Get Personalized Plan
+          </button>
+          <div id="personalizedPlan" style="margin-top:16px; text-align:left;"></div>
+        </div>
+      </div>
+
+      <!-- Learning Resources -->
+      <div class="card">
+        <div class="card-header">
+          <h2><i class="fas fa-graduation-cap"></i> Recommended Learning Path</h2>
+        </div>
+        <div class="resource-grid" id="careerResourcesGrid"></div>
+      </div>
+
+<!-- Action Buttons -->
+      <div class="action-bar">
+        <button class="btn btn-primary" id="resumeAnalyzerBtn"><i class="fas fa-file-alt"></i> Upload Resume for Review</button>
+        <button class="btn btn-outline" id="interviewPrepBtn"><i class="fas fa-microphone"></i> Practice Interview Prep</button>
+        <button class="btn btn-outline" id="exportPlanBtn"><i class="fas fa-download"></i> Export Career Plan</button>
+      </div>
+    </main>
+  </div>
+
+  <!-- ============ RESUME ANALYSER MODAL ============ -->
+  <div class="modal-overlay" id="resumeModal">
+    <div class="modal modal-lg">
+      <button class="modal-close" onclick="closeModal('resumeModal')">&times;</button>
+      <h2><i class="fas fa-file-alt" style="color:var(--rose);"></i> Resume Analyser</h2>
+      <p>Paste your resume text below and let our AI evaluate its ATS readiness.</p>
+      <textarea id="resumeText" placeholder="Paste your resume content here..." style="width:100%; min-height:180px; padding:14px; border:1.5px solid var(--border); border-radius:12px; font-family:inherit; font-size:0.9rem; resize:vertical; outline:none; margin-bottom:12px;"></textarea>
+      <div class="action-bar" style="justify-content:center;">
+        <button class="btn btn-primary" id="analyzeResumeBtn"><i class="fas fa-search"></i> Analyze Resume</button>
+      </div>
+      <div id="resumeResults" style="margin-top:20px; text-align:left;"></div>
+    </div>
+  </div>
+
+<!-- ============ INTERVIEW PREP MODAL ============ -->
+  <div class="modal-overlay" id="interviewModal">
+    <div class="modal modal-lg">
+      <button class="modal-close" onclick="closeModal('interviewModal')">&times;</button>
+      <h2><i class="fas fa-microphone" style="color:var(--rose);"></i> Interview Prep</h2>
+      <p>Practice a mock interview question with real tips and a model answer.</p>
+      <div class="action-bar" style="justify-content:center; margin-bottom:16px;">
+        <input id="interviewRole" placeholder="Target role (e.g. Product Manager)" style="flex:1; min-width:200px; padding:10px 14px; border:1.5px solid var(--border); border-radius:10px; font-family:inherit; font-size:0.85rem; outline:none;">
+        <button class="btn btn-primary" id="getQuestionBtn"><i class="fas fa-redo-alt"></i> Get Question</button>
+      </div>
+      <div id="interviewResults" style="text-align:left;"></div>
+    </div>
+  </div>
+
+  <!-- ============ DETAILED REPORT MODAL ============ -->
+  <div class="modal-overlay" id="reportModal">
+    <div class="modal modal-lg">
+      <button class="modal-close" onclick="closeModal('reportModal')">&times;</button>
+      <h2><i class="fas fa-chart-bar" style="color:var(--rose);"></i> Detailed Skill Report</h2>
+      <div id="reportResults" style="text-align:left; margin-top:16px;"></div>
+    </div>
+  </div>
+
+  <script src="../config.js"></script>
+<script src="../js/api.js"></script>
+  <script src="../js/app.js"></script>
+  <script src="../js/exportUtils.js"></script>
+  <script src="../js/career.js"></script>
+</body>
+</html>
