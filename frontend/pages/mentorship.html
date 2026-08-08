@@ -1,0 +1,199 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Mentorship Connect · Aviraa</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Playfair+Display:wght@500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+  <link rel="stylesheet" href="../css/app.css">
+  <style>
+    .mentor-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+      gap: 24px;
+      margin-top: 24px;
+    }
+    .mentor-card {
+      background: var(--white);
+      border-radius: var(--radius);
+      padding: 24px;
+      border: 1px solid var(--border);
+      box-shadow: var(--shadow);
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+      position: relative;
+      transition: all 0.25s ease;
+    }
+    .mentor-card:hover {
+      transform: translateY(-4px);
+      box-shadow: var(--shadow-lg);
+      border-color: var(--rose);
+    }
+    .mentor-header {
+      display: flex;
+      gap: 16px;
+      align-items: center;
+    }
+    .m-avatar {
+      width: 60px;
+      height: 60px;
+      border-radius: 50%;
+      background: var(--rose-light);
+      color: var(--rose);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: 700;
+      font-size: 1.4rem;
+      border: 2px solid var(--rose);
+    }
+    .m-info h3 {
+      font-size: 1.1rem;
+      font-weight: 700;
+      color: var(--dark);
+      margin-bottom: 2px;
+    }
+    .m-title {
+      font-size: 0.85rem;
+      color: var(--rose);
+      font-weight: 600;
+    }
+    .m-company {
+      font-size: 0.8rem;
+      color: var(--muted);
+    }
+    .m-badge {
+      position: absolute;
+      top: 20px;
+      right: 20px;
+      background: #e8f2ec;
+      color: var(--sage);
+      padding: 4px 10px;
+      border-radius: 12px;
+      font-weight: 700;
+      font-size: 0.75rem;
+    }
+    .m-bio {
+      font-size: 0.85rem;
+      color: var(--text);
+      line-height: 1.5;
+    }
+    .m-tags {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+    }
+    .m-tag {
+      background: #fdfaf7;
+      border: 1px solid var(--border);
+      padding: 4px 10px;
+      border-radius: 12px;
+      font-size: 0.75rem;
+      color: var(--muted);
+    }
+    .m-footer {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-top: auto;
+      padding-top: 12px;
+      border-top: 1px solid var(--border);
+    }
+    .m-rate {
+      font-size: 0.8rem;
+      color: var(--sage);
+      font-weight: 600;
+    }
+  </style>
+</head>
+<body>
+  <div class="app-container">
+    <nav class="sidebar">
+      <a href="../index.html" class="logo-area">
+        <i class="fas fa-seedling"></i>
+        <span>Aviraa</span>
+      </a>
+      <ul class="nav-menu">
+        <li><a href="../app.html" class="nav-item"><i class="fas fa-th-large"></i> <span>Dashboard</span></a></li>
+        <li><a href="career.html" class="nav-item"><i class="fas fa-leaf"></i> <span>Career AI</span></a></li>
+        <li><a href="wellness.html" class="nav-item"><i class="fas fa-spa"></i> <span>Wellness</span></a></li>
+        <li><a href="companion.html" class="nav-item"><i class="fas fa-comments"></i> <span>AI Companion</span></a></li>
+        <li><a href="opportunities.html" class="nav-item"><i class="fas fa-route"></i> <span>Opportunities</span></a></li>
+        <li><a href="mentorship.html" class="nav-item active"><i class="fas fa-users-line"></i> <span>Mentorship</span></a></li>
+        <li><a href="../profile.html" class="nav-item"><i class="fas fa-user"></i> <span>Profile</span></a></li>
+      </ul>
+      <div class="sidebar-footer">
+        <div class="user-card" style="cursor:pointer" onclick="window.location.href='../profile.html'">
+          <div class="avatar">U</div>
+          <div class="user-info">
+            <div class="name">Loading...</div>
+            <div class="plan">Database profile</div>
+          </div>
+        </div>
+      </div>
+      <div style="margin-top:12px; text-align:center;">
+        <a href="#" id="logoutBtn" class="nav-item" style="padding:8px; font-size:0.85rem; color:var(--rose);"><i class="fas fa-sign-out-alt"></i> <span>Logout</span></a>
+      </div>
+    </nav>
+
+    <main class="main-content">
+      <div class="page-header">
+        <h1><i class="fas fa-users-line" style="color:var(--rose);"></i> Mentorship Connect</h1>
+        <p>Connect 1-on-1 with accomplished female leaders for career acceleration and holistic guidance.</p>
+      </div>
+
+      <!-- Filters -->
+      <div style="display:flex; gap:16px; flex-wrap:wrap; margin-bottom:24px; align-items:center;">
+        <input type="text" id="mentorSearch" placeholder="Search by name, skill, or role..." style="padding:12px 18px; border:1.5px solid var(--border); border-radius:12px; width:300px; font-size:0.9rem;">
+        <div style="display:flex; gap:8px;">
+          <button class="suggestion-chip active" onclick="filterCategory('All', this)">All Categories</button>
+          <button class="suggestion-chip" onclick="filterCategory('Tech', this)">Tech</button>
+          <button class="suggestion-chip" onclick="filterCategory('Career', this)">Career</button>
+          <button class="suggestion-chip" onclick="filterCategory('Wellness', this)">Wellness</button>
+          <button class="suggestion-chip" onclick="filterCategory('Entrepreneurship', this)">Entrepreneurship</button>
+        </div>
+      </div>
+
+      <!-- Mentor Grid -->
+      <div class="mentor-grid" id="mentorGrid">
+        <div style="grid-column:1/-1; text-align:center; padding:40px;"><i class="fas fa-spinner fa-spin fa-2x"></i><p>Loading mentors...</p></div>
+      </div>
+    </main>
+  </div>
+
+  <!-- Request Modal -->
+  <div class="modal-overlay" id="requestModal">
+    <div class="modal">
+      <button class="modal-close" onclick="closeModal()">&times;</button>
+      <h2 id="modalMentorName">Request Mentorship</h2>
+      <p>Schedule a 1-on-1 guidance session.</p>
+      <form id="requestForm" style="display:flex; flex-direction:column; gap:12px; text-align:left;">
+        <div>
+          <label style="font-size:0.85rem; font-weight:600;">Discussion Topic</label>
+          <input type="text" id="reqTopic" placeholder="e.g. Career Transition to Leadership" required style="width:100%; padding:10px; border-radius:8px; border:1px solid var(--border);">
+        </div>
+        <div>
+          <label style="font-size:0.85rem; font-weight:600;">Preferred Availability</label>
+          <input type="text" id="reqTime" placeholder="e.g. Next Tuesday evening" required style="width:100%; padding:10px; border-radius:8px; border:1px solid var(--border);">
+        </div>
+        <div>
+          <label style="font-size:0.85rem; font-weight:600;">Message / Background Note</label>
+          <textarea id="reqNote" rows="3" placeholder="Briefly describe your goals..." style="width:100%; padding:10px; border-radius:8px; border:1px solid var(--border);"></textarea>
+        </div>
+        <button type="submit" class="btn" style="background:var(--rose); color:white; border-radius:12px; padding:12px; font-weight:600; border:none; cursor:pointer;">
+          <i class="fas fa-paper-plane"></i> Send Session Request
+        </button>
+      </form>
+    </div>
+  </div>
+
+  <script src="../config.js"></script>
+<script src="../js/api.js"></script>
+  <script src="../js/app.js"></script>
+  <script src="../js/mentorship.js"></script>
+</body>
+</html>
