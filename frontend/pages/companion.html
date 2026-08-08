@@ -1,0 +1,192 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AI Companion · Aviraa</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,400;14..32,500;14..32,600;14..32,700&family=Playfair+Display:ital,wght@0,500;0,600;0,700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+  <link rel="stylesheet" href="../css/app.css">
+</head>
+<body>
+  <div class="app-container">
+    
+    <!-- Sidebar -->
+    <nav class="sidebar">
+      <a href="../index.html" class="logo-area">
+        <i class="fas fa-seedling"></i>
+        <span>Aviraa</span>
+      </a>
+      <ul class="nav-menu">
+        <li><a href="../app.html" class="nav-item"><i class="fas fa-th-large"></i> <span>Dashboard</span></a></li>
+        <li><a href="career.html" class="nav-item"><i class="fas fa-leaf"></i> <span>Career AI</span></a></li>
+        <li><a href="wellness.html" class="nav-item"><i class="fas fa-spa"></i> <span>Wellness</span></a></li>
+        <li><a href="companion.html" class="nav-item active"><i class="fas fa-comments"></i> <span>AI Companion</span></a></li>
+        <li><a href="opportunities.html" class="nav-item"><i class="fas fa-route"></i> <span>Opportunities</span></a></li>
+        <li><a href="mentorship.html" class="nav-item"><i class="fas fa-users-line"></i> <span>Mentorship</span></a></li>
+        <li><a href="../profile.html" class="nav-item"><i class="fas fa-user"></i> <span>Profile</span></a></li>
+      </ul>
+      <div class="sidebar-footer">
+        <div class="user-card" style="cursor:pointer" onclick="window.location.href='../profile.html'">
+          <div class="avatar">P</div>
+          <div class="user-info">
+            <div class="name">Loading...</div>
+            <div class="plan">Database profile</div>
+          </div>
+        </div>
+      </div>
+        <div style="margin-top:12px; text-align:center;">
+          <a href="#" id="logoutBtn" class="nav-item" style="padding:8px; font-size:0.85rem; color:var(--rose);"><i class="fas fa-sign-out-alt"></i> <span>Logout</span></a>
+        </div>
+    </nav>
+
+    <!-- Main Content -->
+    <main class="main-content">
+      <div class="page-header">
+        <h1><i class="fas fa-comments" style="color:#8b5e9e;"></i> AI Companion</h1>
+        <p>Your private, empathetic AI — here 24/7 for career guidance, wellness support, or just to listen.</p>
+      </div>
+
+      <div class="companion-layout">
+        
+        <!-- Chat Area -->
+        <div class="chat-container">
+          <div class="chat-header">
+            <div class="chat-header-left">
+              <div class="companion-avatar">
+                <i class="fas fa-comments"></i>
+              </div>
+              <div>
+                <h3>Aviraa Companion</h3>
+                <span class="online-status">● Online · Always confidential</span>
+              </div>
+            </div>
+            <div class="chat-header-actions">
+              <button class="icon-btn" id="ttsToggleBtn" title="Toggle Voice Response (Auto-Read)" onclick="toggleTTS()">
+                <i class="fas fa-volume-mute" id="ttsIcon"></i>
+              </button>
+              <button class="icon-btn" title="Clear chat" onclick="clearChat()">
+                <i class="fas fa-trash-alt"></i>
+              </button>
+              <button class="icon-btn" title="Export conversation" onclick="exportChat()">
+                <i class="fas fa-download"></i>
+              </button>
+            </div>
+          </div>
+
+          <div class="chat-messages" id="chatMessages">
+            <!-- Welcome message -->
+            <div class="message-wrapper bot">
+              <div class="message-avatar">
+                <i class="fas fa-comments"></i>
+              </div>
+              <div class="message-bubble">
+                <p>Hi Priya! I'm your Aviraa companion. I'm here to support both your career ambitions and personal well-being. 💜</p>
+                <p>You can ask me about:</p>
+                <ul>
+                  <li>💼 Career advice & interview prep</li>
+                  <li>🧠 Stress management & burnout prevention</li>
+                  <li>🩸 Cycle-aware productivity tips</li>
+                  <li>💰 Salary negotiation strategies</li>
+                  <li>📝 Resume & LinkedIn optimization</li>
+                </ul>
+                <p>What's on your mind today?</p>
+              </div>
+              <span class="message-time">Just now</span>
+            </div>
+          </div>
+
+          <div class="chat-typing" id="typingIndicator" style="display:none;">
+            <div class="message-wrapper bot">
+              <div class="message-avatar">
+                <i class="fas fa-robot"></i>
+              </div>
+              <div class="message-bubble typing-bubble">
+                <span class="typing-dot"></span>
+                <span class="typing-dot"></span>
+                <span class="typing-dot"></span>
+              </div>
+            </div>
+          </div>
+
+          <div class="chat-input-area">
+            <div class="input-wrapper">
+              <button class="input-action-btn" title="Attach file" onclick="showToast('📎 File upload coming soon!')">
+                <i class="fas fa-paperclip"></i>
+              </button>
+              <input 
+                type="text" 
+                id="chatInput" 
+                placeholder="Ask me anything about career or wellness..." 
+                onkeypress="handleChatKey(event)"
+                autocomplete="off"
+              >
+              <button class="input-action-btn" id="voiceBtn" title="Voice input (Speech to Text)" onclick="toggleVoiceInput()">
+                <i class="fas fa-microphone" id="micIcon"></i>
+              </button>
+            </div>
+            <button class="send-btn" onclick="sendMessage()" id="sendButton">
+              <i class="fas fa-paper-plane"></i>
+            </button>
+          </div>
+        </div>
+
+        <!-- Suggestions Panel -->
+        <div class="suggestions-panel">
+          <div class="panel-section">
+            <h4><i class="fas fa-lightbulb"></i> Suggested Prompts</h4>
+            <div class="suggestion-list">
+              <button class="suggestion-chip" onclick="quickPrompt('How do I negotiate a higher salary as a woman?')">
+                💰 Salary negotiation tips
+              </button>
+              <button class="suggestion-chip" onclick="quickPrompt('I feel burned out at work. What should I do?')">
+                🧠 Dealing with burnout
+              </button>
+              <button class="suggestion-chip" onclick="quickPrompt('Prepare me for a senior product manager interview')">
+                🎤 Interview preparation
+              </button>
+              <button class="suggestion-chip" onclick="quickPrompt('How can I be more productive during my luteal phase?')">
+                🩸 Cycle-aware productivity
+              </button>
+              <button class="suggestion-chip" onclick="quickPrompt('Help me write a LinkedIn post about my promotion')">
+                📝 LinkedIn post help
+              </button>
+              <button class="suggestion-chip" onclick="quickPrompt('I feel imposter syndrome. How do I overcome it?')">
+                💪 Overcoming imposter syndrome
+              </button>
+            </div>
+          </div>
+
+          <div class="panel-section">
+            <h4><i class="fas fa-clock"></i> Recent Conversations</h4>
+            <div class="recent-list" id="recentList">
+              <div class="recent-item" onclick="quickPrompt('What skills do I need for Director level?')">
+                <i class="fas fa-comment"></i>
+                <span>Career growth to Director...</span>
+              </div>
+              <div class="recent-item" onclick="quickPrompt('How do I set boundaries at work?')">
+                <i class="fas fa-comment"></i>
+                <span>Setting work boundaries...</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="panel-section privacy-note">
+            <i class="fas fa-shield-alt"></i>
+            <p>Your conversations are private and encrypted. We never share your data.</p>
+          </div>
+        </div>
+
+      </div>
+    </main>
+  </div>
+
+  
+  <script src="../config.js"></script>
+<script src="../js/api.js"></script>
+  <script src="../js/app.js"></script>
+  <script src="../js/companion.js"></script>
+</body>
+</html>
