@@ -1,0 +1,304 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Wellness · Aviraa</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,400;14..32,500;14..32,600;14..32,700&family=Playfair+Display:ital,wght@0,500;0,600;0,700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+  <link rel="stylesheet" href="../css/app.css">
+</head>
+<body>
+  <div class="app-container">
+    
+    <!-- Sidebar -->
+    <nav class="sidebar">
+      <a href="../index.html" class="logo-area">
+        <i class="fas fa-seedling"></i>
+        <span>Aviraa</span>
+      </a>
+      <ul class="nav-menu">
+        <li><a href="../app.html" class="nav-item"><i class="fas fa-th-large"></i> <span>Dashboard</span></a></li>
+        <li><a href="career.html" class="nav-item"><i class="fas fa-leaf"></i> <span>Career AI</span></a></li>
+        <li><a href="wellness.html" class="nav-item active"><i class="fas fa-spa"></i> <span>Wellness</span></a></li>
+        <li><a href="companion.html" class="nav-item"><i class="fas fa-comments"></i> <span>AI Companion</span></a></li>
+        <li><a href="opportunities.html" class="nav-item"><i class="fas fa-route"></i> <span>Opportunities</span></a></li>
+        <li><a href="mentorship.html" class="nav-item"><i class="fas fa-users-line"></i> <span>Mentorship</span></a></li>
+        <li><a href="../profile.html" class="nav-item"><i class="fas fa-user"></i> <span>Profile</span></a></li>
+      </ul>
+      <div class="sidebar-footer">
+        <div class="user-card" style="cursor:pointer" onclick="window.location.href='../profile.html'">
+          <div class="avatar">P</div>
+          <div class="user-info">
+            <div class="name">Loading...</div>
+            <div class="plan">Database profile</div>
+          </div>
+        </div>
+      </div>
+        <div style="margin-top:12px; text-align:center;">
+          <a href="#" id="logoutBtn" class="nav-item" style="padding:8px; font-size:0.85rem; color:var(--rose);"><i class="fas fa-sign-out-alt"></i> <span>Logout</span></a>
+        </div>
+    </nav>
+
+    <!-- Main Content -->
+    <main class="main-content">
+      <div class="page-header" style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:16px;">
+        <div>
+          <h1><i class="fas fa-spa" style="color:var(--sage);"></i> Preventive Wellness</h1>
+          <p>Cycle-aware insights, stress management, and daily self-care — because your career thrives when you do.</p>
+        </div>
+        <div style="display:flex; gap:10px;">
+          <button class="btn" style="background:var(--rose); color:white; border-radius:12px; padding:10px 16px; border:none; cursor:pointer; font-size:0.88rem;" onclick="exportWellnessPDF()">
+            <i class="fas fa-file-pdf"></i> Export Wellness PDF
+          </button>
+          <button class="btn" style="background:var(--sage); color:white; border-radius:12px; padding:10px 16px; border:none; cursor:pointer; font-size:0.88rem;" onclick="exportWellnessCSV()">
+            <i class="fas fa-file-csv"></i> Export Mood CSV
+          </button>
+        </div>
+      </div>
+
+      <!-- Stats Row -->
+      <div class="grid-3">
+        <div class="stat-card">
+          <div class="stat-value" id="wellnessStreak">0</div>
+          <div class="stat-label">Day Wellness Streak 🔥</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-value" id="currentMood">😊</div>
+          <div class="stat-label">Today's Mood</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-value" id="cycleDayLabel">Day --</div>
+          <div class="stat-label" id="cyclePhaseLabel">Cycle Phase · --</div>
+        </div>
+      </div>
+
+      <!-- Two Column Layout -->
+      <div class="grid-2">
+        
+        <!-- Mood Check-In -->
+        <div class="card">
+          <div class="card-header">
+            <h2><i class="fas fa-smile"></i> How are you feeling today?</h2>
+          </div>
+          <div class="mood-selector" id="moodSelector">
+            <button class="mood-btn" data-mood="😊" data-label="Great">
+              <span class="mood-emoji">😊</span>
+              <span class="mood-label">Great</span>
+            </button>
+            <button class="mood-btn" data-mood="🙂" data-label="Good">
+              <span class="mood-emoji">🙂</span>
+              <span class="mood-label">Good</span>
+            </button>
+            <button class="mood-btn" data-mood="😐" data-label="Okay">
+              <span class="mood-emoji">😐</span>
+              <span class="mood-label">Okay</span>
+            </button>
+            <button class="mood-btn" data-mood="😔" data-label="Low">
+              <span class="mood-emoji">😔</span>
+              <span class="mood-label">Low</span>
+            </button>
+            <button class="mood-btn" data-mood="😤" data-label="Stressed">
+              <span class="mood-emoji">😤</span>
+              <span class="mood-label">Stressed</span>
+            </button>
+          </div>
+          <div id="moodFeedback" class="mood-feedback">
+            <p>Select your mood to get personalized wellness tips.</p>
+          </div>
+          <div id="moodHistory" class="mood-history">
+            <h4>Recent Moods</h4>
+            <div class="mood-timeline" id="moodTimeline">
+              <!-- Populated by JS -->
+            </div>
+          </div>
+        </div>
+
+        <!-- Cycle & Body Insights -->
+        <div class="card">
+          <div class="card-header">
+            <h2><i class="fas fa-moon"></i> Cycle-Aware Insights</h2>
+            <span class="tag tag-sage">Luteal Phase</span>
+          </div>
+          
+          <div class="cycle-info">
+            <div class="cycle-stat">
+              <i class="fas fa-calendar-day"></i>
+              <div>
+                <strong id="cycleProgressText">Day -- of --</strong>
+                <p id="cyclePredictionText">Next cycle prediction unavailable</p>
+              </div>
+            </div>
+            <div class="cycle-stat">
+              <i class="fas fa-battery-three-quarters"></i>
+              <div>
+                <strong id="cycleEnergyText">Energy Level: --</strong>
+                <p id="cycleEnergyNote">Your cycle data will populate here.</p>
+              </div>
+            </div>
+            <div class="cycle-stat">
+              <i class="fas fa-brain"></i>
+              <div>
+                <strong id="cycleFocusText">Best for: --</strong>
+                <p id="cycleFocusNote">Recommendations will appear from your profile data.</p>
+              </div>
+            </div>
+          </div>
+
+          <div class="ai-tip" id="cycleInsightBox">
+            <i class="fas fa-lightbulb" style="color:var(--sage);"></i>
+            <p><strong>AI Insight:</strong> Loading your personalized cycle insight...</p>
+          </div>
+        </div>
+      </div>
+
+<!-- Quick Wellness Actions -->
+      <div class="card">
+        <div class="card-header">
+          <h2><i class="fas fa-spa"></i> Quick Wellness Actions</h2>
+        </div>
+        <div class="wellness-actions">
+          <button class="wellness-action-btn" data-action="breathing">
+            <div class="action-icon">🧘</div>
+            <span>5-Min Breathing</span>
+            <small>Reduce stress instantly</small>
+          </button>
+          <button class="wellness-action-btn" data-action="water">
+            <div class="action-icon">💧</div>
+            <span>Log Water</span>
+            <small id="waterCount">0 / 8 glasses today</small>
+          </button>
+          <button class="wellness-action-btn" data-action="sleep">
+            <div class="action-icon">🛌</div>
+            <span>Log Sleep</span>
+            <small id="sleepLog">-- hrs, tap to log</small>
+          </button>
+          <button class="wellness-action-btn" data-action="exercise">
+            <div class="action-icon">🏃‍♀️</div>
+            <span>Log Exercise</span>
+            <small id="exerciseCount">0 min today</small>
+          </button>
+          <button class="wellness-action-btn" data-action="stress">
+            <div class="action-icon">📊</div>
+            <span>Log Stress</span>
+            <small id="stressLog">Tap to rate 1-10</small>
+          </button>
+          <button class="wellness-action-btn" data-action="journal">
+            <div class="action-icon">📝</div>
+            <span>Quick Journal</span>
+            <small>3 gratitude prompts</small>
+          </button>
+          <button class="wellness-action-btn" data-action="stretch">
+            <div class="action-icon">🧘‍♀️</div>
+            <span>Desk Stretches</span>
+            <small>3-min routine</small>
+          </button>
+        </div>
+      </div>
+
+      <!-- Daily Wellness Checklist (Habits) -->
+      <div class="card">
+        <div class="card-header">
+          <h2><i class="fas fa-check-double"></i> Daily Wellness Checklist</h2>
+          <span class="tag tag-sage" id="habitProgressTag">0 / 8 done</span>
+        </div>
+        <div class="habit-list" id="habitList">
+          <p style="color:var(--muted);">Loading your habits...</p>
+        </div>
+        <div style="margin-top:12px;">
+          <div class="progress-bar"><div class="progress-fill sage" id="habitProgressBar" style="width:0%"></div></div>
+        </div>
+      </div>
+
+      <!-- Stress & Recovery -->
+      <div class="grid-2">
+        <div class="card">
+          <div class="card-header">
+            <h2><i class="fas fa-chart-line"></i> Stress Trends</h2>
+            <span class="tag tag-rose" id="stressTrendTag">This Week</span>
+          </div>
+          <div class="stress-chart" id="stressChart">
+            <div class="chart-bar"><div class="bar-fill" style="height:0%"></div><span>Mon</span></div>
+            <div class="chart-bar"><div class="bar-fill" style="height:0%"></div><span>Tue</span></div>
+            <div class="chart-bar"><div class="bar-fill" style="height:0%"></div><span>Wed</span></div>
+            <div class="chart-bar"><div class="bar-fill" style="height:0%"></div><span>Thu</span></div>
+            <div class="chart-bar"><div class="bar-fill" style="height:0%"></div><span>Fri</span></div>
+            <div class="chart-bar"><div class="bar-fill" style="height:0%"></div><span>Sat</span></div>
+            <div class="chart-bar"><div class="bar-fill active" style="height:0%"></div><span>Today</span></div>
+          </div>
+          <p style="text-align:center; color:var(--sage); font-weight:500; margin-top:12px;" id="stressTrendText">
+            Log your stress to see your trend.
+          </p>
+        </div>
+
+        <div class="card">
+          <div class="card-header">
+            <h2><i class="fas fa-heart"></i> Self-Care Reminders</h2>
+          </div>
+          <div class="reminder-list" id="reminderList">
+            <div class="reminder-item" data-reminder="stretch">
+              <i class="far fa-circle"></i>
+              <span>Morning stretch routine</span>
+            </div>
+            <div class="reminder-item" data-reminder="water">
+              <i class="far fa-circle"></i>
+              <span>Drink 2L water</span>
+            </div>
+            <div class="reminder-item" data-reminder="break">
+              <i class="far fa-circle"></i>
+              <span>Take screen break every 2 hours</span>
+            </div>
+            <div class="reminder-item" data-reminder="winddown">
+              <i class="far fa-circle"></i>
+              <span>Evening wind-down (no screens 30min before bed)</span>
+            </div>
+            <div class="reminder-item" data-reminder="gratitude">
+              <i class="far fa-circle"></i>
+              <span>5-minute gratitude journal</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Weekly Wellness Summary -->
+      <div class="card" id="weeklySummaryCard">
+        <div class="card-header">
+          <h2><i class="fas fa-chart-pie"></i> Weekly Wellness Summary</h2>
+          <span class="tag tag-rose">Last 7 Days</span>
+        </div>
+        <div class="grid-4" id="weeklySummaryGrid">
+          <div class="stat-card"><div class="stat-value" id="avgSleepValue">--</div><div class="stat-label">Avg Sleep (hrs)</div></div>
+          <div class="stat-card"><div class="stat-value" id="avgWaterValue">--</div><div class="stat-label">Avg Water (glasses)</div></div>
+          <div class="stat-card"><div class="stat-value" id="exerciseTotalValue">--</div><div class="stat-label">Exercise (min)</div></div>
+          <div class="stat-card"><div class="stat-value" id="avgStressValue">--</div><div class="stat-label">Avg Stress (1-10)</div></div>
+        </div>
+        <div id="moodDistribution" style="margin-top:12px;"></div>
+      </div>
+
+</main>
+  </div>
+
+  <!-- Breathing Exercise Modal -->
+  <div class="modal-overlay" id="breathingModal">
+    <div class="modal">
+      <button class="modal-close" onclick="closeBreathingModal()">✕</button>
+      <h2>🧘 5-Minute Breathing Exercise</h2>
+      <div class="breathing-circle" id="breathingCircle">
+        <span id="breathingText">Breathe In</span>
+      </div>
+      <p id="breathingTimer">5:00</p>
+      <button class="btn btn-primary" id="startBreathing" onclick="startBreathing()">Start</button>
+      <button class="btn btn-outline" onclick="closeBreathingModal()">Close</button>
+    </div>
+  </div>
+
+  
+  <script src="../config.js"></script>
+<script src="../js/api.js"></script>
+  <script src="../js/app.js"></script>
+  <script src="../js/exportUtils.js"></script>
+  <script src="../js/wellness.js"></script>
+</body>
+</html>
