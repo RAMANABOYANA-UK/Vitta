@@ -1,0 +1,175 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Opportunities · Aviraa</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,400;14..32,500;14..32,600;14..32,700&family=Playfair+Display:ital,wght@0,500;0,600;0,700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+  <link rel="stylesheet" href="../css/app.css">
+</head>
+<body>
+  <div class="app-container">
+    
+    <!-- Sidebar -->
+    <nav class="sidebar">
+      <a href="../index.html" class="logo-area">
+        <i class="fas fa-seedling"></i>
+        <span>Aviraa</span>
+      </a>
+      <ul class="nav-menu">
+        <li><a href="../app.html" class="nav-item"><i class="fas fa-th-large"></i> <span>Dashboard</span></a></li>
+        <li><a href="career.html" class="nav-item"><i class="fas fa-leaf"></i> <span>Career AI</span></a></li>
+        <li><a href="wellness.html" class="nav-item"><i class="fas fa-spa"></i> <span>Wellness</span></a></li>
+        <li><a href="companion.html" class="nav-item"><i class="fas fa-comments"></i> <span>AI Companion</span></a></li>
+        <li><a href="opportunities.html" class="nav-item active"><i class="fas fa-route"></i> <span>Opportunities</span></a></li>
+        <li><a href="mentorship.html" class="nav-item"><i class="fas fa-users-line"></i> <span>Mentorship</span></a></li>
+        <li><a href="../profile.html" class="nav-item"><i class="fas fa-user"></i> <span>Profile</span></a></li>
+      </ul>
+      <div class="sidebar-footer">
+        <div class="user-card" style="cursor:pointer" onclick="window.location.href='../profile.html'">
+          <div class="avatar">P</div>
+          <div class="user-info">
+            <div class="name">Loading...</div>
+            <div class="plan">Database profile</div>
+          </div>
+        </div>
+      </div>
+        <div style="margin-top:12px; text-align:center;">
+          <a href="#" id="logoutBtn" class="nav-item" style="padding:8px; font-size:0.85rem; color:var(--rose);"><i class="fas fa-sign-out-alt"></i> <span>Logout</span></a>
+        </div>
+    </nav>
+
+    <!-- Main Content -->
+    <main class="main-content">
+      <div class="page-header">
+        <h1><i class="fas fa-route" style="color:#c4855a;"></i> Opportunity Discovery</h1>
+        <p>Curated jobs, mentorship programs, and upskilling resources — matched to your profile and preferences.</p>
+      </div>
+
+      <!-- Stats Row -->
+      <div class="grid-4">
+        <div class="stat-card">
+          <div class="stat-value">24</div>
+          <div class="stat-label">New Matches This Week</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-value">92%</div>
+          <div class="stat-label">Avg. Match Score</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-value">3</div>
+          <div class="stat-label">Saved Jobs</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-value">2</div>
+          <div class="stat-label">Applications Sent</div>
+        </div>
+      </div>
+
+      <!-- Search & Filters -->
+      <div class="card">
+        <div class="filters-container">
+          <div class="search-box">
+            <i class="fas fa-search"></i>
+            <input type="text" id="searchInput" placeholder="Search jobs, courses, or mentors..." oninput="filterOpportunities()">
+          </div>
+          <div class="filter-chips">
+            <button class="filter-chip active" data-filter="all" onclick="setFilter('all', this)">All</button>
+            <button class="filter-chip" data-filter="job" onclick="setFilter('job', this)">
+              <i class="fas fa-briefcase"></i> Jobs
+            </button>
+            <button class="filter-chip" data-filter="course" onclick="setFilter('course', this)">
+              <i class="fas fa-graduation-cap"></i> Courses
+            </button>
+            <button class="filter-chip" data-filter="mentorship" onclick="setFilter('mentorship', this)">
+              <i class="fas fa-handshake"></i> Mentorship
+            </button>
+            <button class="filter-chip" data-filter="freelance" onclick="setFilter('freelance', this)">
+              <i class="fas fa-laptop"></i> Freelance
+            </button>
+          </div>
+          <div class="sort-options">
+            <select id="sortSelect" onchange="filterOpportunities()">
+              <option value="match">Sort by: Match Score</option>
+              <option value="recent">Sort by: Most Recent</option>
+              <option value="salary">Sort by: Salary (High to Low)</option>
+            </select>
+          </div>
+        </div>
+      </div>
+
+      <!-- Saved Search Alerts -->
+      <div class="saved-alerts" id="savedAlerts" style="display:none;">
+        <div class="alert-card">
+          <i class="fas fa-bell"></i>
+          <span>New Senior PM roles matching your profile</span>
+          <button class="btn btn-sm btn-outline" onclick="showToast('🔔 Alert updated!')">Edit Alert</button>
+        </div>
+      </div>
+
+      <!-- Results Count -->
+      <div class="results-header">
+        <p id="resultsCount">Showing 8 opportunities</p>
+        <div class="view-toggle">
+          <button class="view-btn active" onclick="toggleView('grid')"><i class="fas fa-th"></i></button>
+          <button class="view-btn" onclick="toggleView('list')"><i class="fas fa-list"></i></button>
+        </div>
+      </div>
+
+      <!-- Opportunities Grid -->
+      <div class="opportunities-grid" id="opportunitiesGrid">
+        <!-- Populated by JS -->
+      </div>
+
+      <!-- Load More -->
+      <div class="load-more-container">
+        <button class="btn btn-outline" id="loadMoreBtn" onclick="loadMore()">
+          <i class="fas fa-chevron-down"></i> Load More Opportunities
+        </button>
+      </div>
+
+    </main>
+  </div>
+
+  <!-- Application Modal -->
+  <div class="modal-overlay" id="applyModal">
+    <div class="modal modal-lg">
+      <button class="modal-close" onclick="closeApplyModal()">✕</button>
+      <div id="applyModalContent">
+        <h2>Apply with Aviraa AI Assistant</h2>
+        <p>Our AI will help tailor your application for this role.</p>
+        <div class="apply-steps">
+          <div class="apply-step">
+            <i class="fas fa-file-alt"></i>
+            <strong>Resume</strong>
+            <p>Your latest resume will be auto-attached</p>
+          </div>
+          <div class="apply-step">
+            <i class="fas fa-robot"></i>
+            <strong>AI Cover Letter</strong>
+            <p>Generate a personalized cover letter in seconds</p>
+          </div>
+          <div class="apply-step">
+            <i class="fas fa-paper-plane"></i>
+            <strong>Submit</strong>
+            <p>Review and send your application</p>
+          </div>
+        </div>
+        <button class="btn btn-primary" onclick="submitApplication()">
+          <i class="fas fa-robot"></i> Generate & Apply
+        </button>
+        <button class="btn btn-outline" onclick="closeApplyModal()">Cancel</button>
+      </div>
+    </div>
+  </div>
+
+  
+  <script src="../config.js"></script>
+<script src="../js/api.js"></script>
+  <script src="../js/app.js"></script>
+  <script src="../js/opportunities.js"></script>
+</body>
+</html>
