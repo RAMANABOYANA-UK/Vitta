@@ -1,0 +1,241 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Dashboard · Aviraa</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,400;14..32,500;14..32,600;14..32,700&family=Playfair+Display:ital,wght@0,500;0,600;0,700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+  <link rel="stylesheet" href="css/app.css">
+</head>
+<body>
+  <div class="app-container">
+    <!-- Sidebar -->
+    <nav class="sidebar">
+      <a href="index.html" class="logo-area">
+        <i class="fas fa-seedling"></i>
+        <span>Aviraa</span>
+      </a>
+      <ul class="nav-menu">
+        <li><a href="app.html" class="nav-item active"><i class="fas fa-th-large"></i> <span>Dashboard</span></a></li>
+        <li><a href="pages/career.html" class="nav-item"><i class="fas fa-leaf"></i> <span>Career AI</span></a></li>
+        <li><a href="pages/wellness.html" class="nav-item"><i class="fas fa-spa"></i> <span>Wellness</span></a></li>
+        <li><a href="pages/companion.html" class="nav-item"><i class="fas fa-comments"></i> <span>AI Companion</span></a></li>
+        <li><a href="pages/opportunities.html" class="nav-item"><i class="fas fa-route"></i> <span>Opportunities</span></a></li>
+        <li><a href="pages/mentorship.html" class="nav-item"><i class="fas fa-users-line"></i> <span>Mentorship</span></a></li>
+        <li><a href="profile.html" class="nav-item"><i class="fas fa-user"></i> <span>Profile</span></a></li>
+      </ul>
+      <div class="sidebar-footer">
+        <div class="user-card" style="cursor:pointer" onclick="window.location.href='profile.html'">
+          <div class="avatar">A</div>
+          <div class="user-info">
+            <div class="name" id="sidebarUserName">Loading...</div>
+            <div class="plan" id="sidebarUserPlan">Database profile</div>
+          </div>
+        </div>
+        <div style="margin-top:12px; text-align:center;">
+          <a href="#" id="logoutBtn" class="nav-item" style="padding:8px; font-size:0.85rem; color:var(--rose);">
+            <i class="fas fa-sign-out-alt"></i> <span>Logout</span>
+          </a>
+        </div>
+      </div>
+    </nav>
+
+    <!-- Main Content -->
+    <main class="main-content">
+      <!-- Welcome Header -->
+      <div class="dashboard-header">
+        <div class="welcome-section">
+          <h1>Good morning <span class="wave">👋</span></h1>
+          <p>Empowering women to build successful careers while prioritizing their well-being.</p>
+        </div>
+        <div class="header-actions">
+          <div class="date-display" id="dateDisplay"></div>
+          <button class="btn btn-primary" onclick="window.location.href='pages/companion.html'">
+            <i class="fas fa-comments"></i> Talk to Companion
+          </button>
+        </div>
+      </div>
+
+      <!-- Quick Stats Row -->
+      <div class="grid-4">
+        <div class="stat-card highlight">
+          <div class="stat-icon"><i class="fas fa-bullseye"></i></div>
+          <div class="stat-value" id="statCareer">0%</div>
+          <div class="stat-label">Career Goal Progress</div>
+          <div class="progress-bar small"><div class="progress-fill rose" id="careerProgressBar" style="width:0%"></div></div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-icon sage"><i class="fas fa-fire"></i></div>
+          <div class="stat-value" id="statWellness">0</div>
+          <div class="stat-label">Wellness Day Streak</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-icon amber"><i class="fas fa-star"></i></div>
+          <div class="stat-value" id="statOpportunities">0</div>
+          <div class="stat-label">New Opportunities</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-icon purple"><i class="fas fa-comments"></i></div>
+          <div class="stat-value" id="statChats">0</div>
+          <div class="stat-label">Companion Sessions</div>
+        </div>
+      </div>
+
+      <!-- Main Dashboard Grid -->
+      <div class="dashboard-grid">
+        <!-- Left Column -->
+        <div class="dashboard-col">
+          <!-- Today's AI Insight -->
+          <div class="card insight-card">
+            <div class="card-header">
+              <h2><i class="fas fa-lightbulb" style="color:#c4855a;"></i> Today's AI Insight</h2>
+              <span class="tag tag-sage">Based on your data</span>
+            </div>
+            <div class="insight-content">
+              <div class="insight-main">
+                <i class="fas fa-brain insight-big-icon"></i>
+                <p id="aiInsightText">Loading your personalized insight...</p>
+              </div>
+              <div class="insight-actions">
+                <button class="btn btn-sm btn-outline" onclick="window.location.href='pages/companion.html'">
+                  <i class="fas fa-robot"></i> Discuss with Companion
+                </button>
+                <button class="btn btn-sm btn-outline" onclick="window.location.href='pages/wellness.html'">
+                  <i class="fas fa-heartbeat"></i> Check Wellness
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <!-- Career Snapshot -->
+          <div class="card">
+            <div class="card-header">
+              <h2><i class="fas fa-briefcase" style="color:var(--rose);"></i> Career Snapshot</h2>
+              <a href="pages/career.html" class="link-sm">View Full →</a>
+            </div>
+            <div class="snapshot-content" id="careerSnapshot">
+              <div class="snapshot-item">
+                <div class="snapshot-label">Current Role</div>
+                <div class="snapshot-value" id="currentRole">Not set</div>
+              </div>
+              <div class="snapshot-item">
+                <div class="snapshot-label">Target Role</div>
+                <div class="snapshot-value" id="targetRole">Not set</div>
+              </div>
+              <div class="snapshot-item">
+                <div class="snapshot-label">Skills Ready</div>
+                <div class="snapshot-value" id="skillsReady">0%</div>
+              </div>
+              <div class="snapshot-progress">
+                <div class="progress-bar"><div class="progress-fill rose" id="snapshotProgressBar" style="width:0%"></div></div>
+              </div>
+              <div class="snapshot-skills" id="snapshotSkills"></div>
+            </div>
+          </div>
+
+          <!-- Recent Activity -->
+          <div class="card">
+            <div class="card-header">
+              <h2><i class="fas fa-clock" style="color:var(--muted);"></i> Recent Activity</h2>
+            </div>
+            <div class="activity-list" id="activityList">
+              <div class="activity-item">
+                <div class="activity-icon sage"><i class="fas fa-spa"></i></div>
+                <div class="activity-info">
+                  <p>Welcome to Aviraa! Log your first mood to see insights here.</p>
+                  <small>Get started</small>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Right Column -->
+        <div class="dashboard-col">
+          <!-- Wellness Snapshot -->
+          <div class="card">
+            <div class="card-header">
+              <h2><i class="fas fa-heartbeat" style="color:var(--sage);"></i> Wellness Snapshot</h2>
+              <a href="pages/wellness.html" class="link-sm">View Full →</a>
+            </div>
+            <div class="wellness-snapshot" id="wellnessSnapshot">
+              <div class="wellness-metric">
+                <div class="metric-circle"><span>😊</span></div>
+                <small>Today's Mood</small>
+              </div>
+              <div class="wellness-metric">
+                <div class="metric-circle sage-bg"><span>--</span></div>
+                <small>Sleep</small>
+              </div>
+              <div class="wellness-metric">
+                <div class="metric-circle amber-bg"><span>--</span></div>
+                <small>Water</small>
+              </div>
+              <div class="wellness-metric">
+                <div class="metric-circle rose-bg"><span>Day --</span></div>
+                <small>Cycle</small>
+              </div>
+            </div>
+            <div class="wellness-tip">
+              <i class="fas fa-spa"></i>
+              <p id="wellnessTip">Log your mood to receive a personalized self-care tip.</p>
+            </div>
+          </div>
+
+          <!-- Upcoming Opportunities -->
+          <div class="card">
+            <div class="card-header">
+              <h2><i class="fas fa-compass" style="color:#c4855a;"></i> Top Matches</h2>
+              <a href="pages/opportunities.html" class="link-sm">View All →</a>
+            </div>
+            <div class="top-matches" id="topMatches">
+              <div class="match-item">
+                <div class="match-score-badge">--</div>
+                <div class="match-info">
+                  <strong>Loading opportunities...</strong>
+                  <p>Personalized matches will appear here</p>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Quick Actions -->
+          <div class="card">
+            <div class="card-header">
+              <h2><i class="fas fa-bolt" style="color:#c4855a;"></i> Quick Actions</h2>
+            </div>
+            <div class="quick-actions-grid">
+              <button class="quick-action-btn" onclick="window.location.href='profile.html'">
+                <i class="fas fa-user"></i><span>Edit Profile</span>
+              </button>
+              <button class="quick-action-btn" onclick="window.location.href='pages/wellness.html'">
+                <i class="fas fa-smile"></i><span>Log Mood</span>
+              </button>
+              <button class="quick-action-btn" onclick="window.location.href='pages/companion.html'">
+                <i class="fas fa-microphone"></i><span>Interview Prep</span>
+              </button>
+              <button class="quick-action-btn" onclick="window.location.href='pages/wellness.html'">
+                <i class="fas fa-spa"></i><span>Breathing Exercise</span>
+              </button>
+              <button class="quick-action-btn" onclick="window.location.href='pages/opportunities.html'">
+                <i class="fas fa-search"></i><span>Find Jobs</span>
+              </button>
+              <button class="quick-action-btn" onclick="window.location.href='pages/companion.html'">
+                <i class="fas fa-comments"></i><span>Chat with AI</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <script src="config.js"></script>
+<script src="js/api.js"></script>
+  <script src="js/app.js"></script>
+  <script src="js/dashboard.js"></script>
+</body>
+</html>
