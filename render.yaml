@@ -1,0 +1,64 @@
+# Render Blueprint for Aviraa - Women Career & Well-being
+# Deploys: Backend (Web Service) + Frontend (Static Site)
+#
+# To deploy:
+#   1. Push this repo to GitHub
+#   2. In Render Dashboard → New → Blueprint → select your GitHub repo
+#   3. Set the required env vars (see below) in the Blueprint / service settings
+#   4. Render auto-creates the Web Service + Static Site
+#
+# NOTE: MongoDB must be provided externally (Render does not host MongoDB natively).
+# Use MongoDB Atlas (https://www.mongodb.com/atlas) free tier and set MONGODB_URI.
+#
+# Required env vars (set in Render dashboard):
+#   MONGODB_URI      - MongoDB Atlas connection string
+#   JWT_SECRET       - a strong random secret
+#   CLIENT_URL       - the deployed frontend URL (e.g. https://aviraa.onrender.com)
+
+services:
+  # ─── Backend API (Node.js + Express) ─────────────────────────────
+  - type: web
+    name: aviraa-backend
+    runtime: node
+    rootDir: backend
+    plan: free
+    buildCommand: npm install
+    startCommand: npm start
+    healthCheckPath: /api/health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 10000
+      - key: MONGODB_URI
+        sync: false            # set this manually (MongoDB Atlas connection string)
+      - key: JWT_SECRET
+        sync: false            # set this manually (strong random secret)
+      - key: JWT_EXPIRE
+        value: 30d
+      - key: CLIENT_URL
+        sync: false            # set this to the deployed frontend URL
+      - key: OPENAI_API_KEY
+        sync: false            # optional
+      - key: OPENAI_API_URL
+        value: https://api.openai.com/v1
+      - key: OPENAI_MODEL
+        value: gpt-4o-mini
+      - key: GEMINI_API_KEY
+        sync: false            # optional
+      - key: GEMINI_MODEL
+        value: gemini-1.5-flash
+      - key: GEMINI_API_URL
+        value: https://generativelanguage.googleapis.com/v1beta
+
+  # ─── Frontend (Static Site) ──────────────────────────────────────
+  - type: web
+    name: aviraa-frontend
+    runtime: static
+    rootDir: frontend
+    buildCommand: ./build.sh
+    staticPublishPath: .
+    plan: free
+    envVars:
+      - key: AVIRA_BACKEND_URL
+        sync: false            # set this to the deployed backend URL (e.g. https://aviraa-backend.onrender.com/api)
