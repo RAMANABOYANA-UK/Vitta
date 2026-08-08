@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Profile · Aviraa</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Playfair+Display:wght@500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+<link rel="stylesheet" href="css/app.css">
+<style>
+.profile-wrap { max-width: 800px; margin: 0 auto; padding: 32px 24px; }
+.p-card { background: #fff; border-radius: 20px; padding: 32px; box-shadow: 0 4px 20px rgba(0,0,0,0.04); }
+.p-head { display: flex; align-items: center; gap: 20px; margin-bottom: 28px; }
+.p-avatar { width: 80px; height: 80px; border-radius: 50%; background: var(--rose-light); color: var(--rose); display: flex; align-items: center; justify-content: center; font-size: 2rem; font-weight: 700; }
+.p-head h2 { font-family: 'Playfair Display', serif; color: var(--dark); }
+.p-head p { color: var(--muted); font-size: 0.9rem; }
+.f-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+.f-g { display: flex; flex-direction: column; gap: 6px; }
+.f-g label { font-size: 0.85rem; font-weight: 600; color: var(--text); }
+.f-g input, .f-g select, .f-g textarea { padding: 10px 14px; border: 1.5px solid var(--border); border-radius: 12px; font-family: inherit; font-size: 0.9rem; }
+.f-g input:focus, .f-g select:focus, .f-g textarea:focus { outline: none; border-color: var(--rose); }
+.f-g.full { grid-column: 1 / -1; }
+.btn-save { margin-top: 24px; width: 100%; background: var(--rose); color: #fff; border: none; padding: 14px; border-radius: 12px; font-size: 1rem; font-weight: 600; cursor: pointer; }
+.btn-save:hover { background: var(--rose-dark); }
+.msg-ok { display: none; background: var(--sage-light); color: var(--sage); padding: 12px; border-radius: 12px; margin-top: 16px; text-align: center; font-size: 0.9rem; }
+@media (max-width: 640px) { .f-grid { grid-template-columns: 1fr; } }
+</style>
+</head>
+<body>
+<div class="app-container">
+<nav class="sidebar">
+<a href="index.html" class="logo-area"><i class="fas fa-seedling"></i><span>Aviraa</span></a>
+<ul class="nav-menu">
+<li><a href="app.html" class="nav-item"><i class="fas fa-th-large"></i> <span>Dashboard</span></a></li>
+<li><a href="pages/career.html" class="nav-item"><i class="fas fa-leaf"></i> <span>Career AI</span></a></li>
+<li><a href="pages/wellness.html" class="nav-item"><i class="fas fa-spa"></i> <span>Wellness</span></a></li>
+<li><a href="pages/companion.html" class="nav-item"><i class="fas fa-comments"></i> <span>AI Companion</span></a></li>
+<li><a href="pages/opportunities.html" class="nav-item"><i class="fas fa-route"></i> <span>Opportunities</span></a></li>
+<li><a href="pages/mentorship.html" class="nav-item"><i class="fas fa-users-line"></i> <span>Mentorship</span></a></li>
+<li><a href="profile.html" class="nav-item active"><i class="fas fa-user"></i> <span>Profile</span></a></li>
+</ul>
+<div class="sidebar-footer">
+<div class="user-card" style="cursor:pointer" onclick="window.location.href='profile.html'">
+<div class="avatar">U</div>
+<div class="user-info"><div class="name">Loading...</div><div class="plan">Database profile</div></div>
+</div>
+<div style="margin-top:12px; text-align:center;">
+<a href="#" id="logoutBtn" class="nav-item" style="padding:8px; font-size:0.85rem; color:var(--rose);"><i class="fas fa-sign-out-alt"></i> <span>Logout</span></a>
+</div>
+</div>
+</nav>
+<main class="main-content">
+<div class="profile-wrap">
+<div class="p-card">
+<div class="p-head">
+<div class="p-avatar" id="profileAvatar">U</div>
+<div>
+<h2 id="profileName">Your Profile</h2>
+<p>Your details drive personalized career and wellness insights.</p>
+</div>
+</div>
+<form id="profileForm">
+<div class="f-grid">
+<div class="f-g"><label>Full Name</label><input type="text" id="pName" placeholder="Your name" required></div>
+<div class="f-g"><label>Email</label><input type="email" id="pEmail" placeholder="you@example.com" required></div>
+<div class="f-g"><label>Current Role</label><input type="text" id="pRole" placeholder="Product Manager"></div>
+<div class="f-g"><label>Target Role</label><input type="text" id="pTargetRole" placeholder="Senior Product Manager"></div>
+<div class="f-g"><label>Years of Experience</label><input type="number" id="pExperience" min="0" max="50" placeholder="4"></div>
+<div class="f-g"><label>Age</label><input type="number" id="pAge" min="18" max="100" placeholder="28"></div>
+<div class="f-g"><label>Preferred Job Types</label><select id="pJobTypes" multiple><option value="job">Full-Time</option><option value="course">Courses</option><option value="mentorship">Mentorship</option><option value="freelance">Freelance</option></select></div>
+<div class="f-g"><label>Preferred Locations</label><input type="text" id="pLocations" placeholder="Remote, Bangalore, Mumbai"></div>
+<div class="f-g full"><label>Skills (format: Skill 85, Skill 70)</label><textarea id="pSkills" rows="3" placeholder="Product Strategy 85, Leadership 70, Data Analytics 60"></textarea></div>
+</div>
+<button type="submit" class="btn-save"><i class="fas fa-save"></i> Save Profile</button>
+<div class="msg-ok" id="profileSuccess">Profile saved successfully!</div>
+
+<div style="margin-top: 32px; border-top: 1px solid var(--border); padding-top: 24px;">
+  <h3 style="font-family: 'Playfair Display', serif; color: var(--dark); margin-bottom: 12px;">
+    <i class="fas fa-envelope" style="color: var(--rose);"></i> Notification & Email Digest Preferences
+  </h3>
+  <div style="display: flex; flex-direction: column; gap: 12px;">
+    <label style="display: flex; align-items: center; gap: 10px; font-size: 0.9rem; cursor: pointer;">
+      <input type="checkbox" id="chkDailyDigest" checked> Daily Wellness & Career Digest Email
+    </label>
+    <label style="display: flex; align-items: center; gap: 10px; font-size: 0.9rem; cursor: pointer;">
+      <input type="checkbox" id="chkWeeklyReport" checked> Weekly Progress Report
+    </label>
+    <label style="display: flex; align-items: center; gap: 10px; font-size: 0.9rem; cursor: pointer;">
+      <input type="checkbox" id="chkCareerAlerts" checked> High-Match Career & Opportunity Alerts
+    </label>
+  </div>
+  <button type="button" class="btn" style="margin-top: 16px; background: var(--sage); color: white; border-radius: 12px; padding: 10px 18px; border: none; cursor: pointer; font-size: 0.88rem;" onclick="triggerTestDigest()">
+    <i class="fas fa-paper-plane"></i> Send Test Digest Email Now
+  </button>
+</div>
+</form>
+</div>
+</div>
+</main>
+</div>
+<script src="config.js"></script>
+<script src="js/api.js"></script>
+<script src="js/app.js"></script>
+<script src="js/profile.js"></script>
+</body>
+</html>
