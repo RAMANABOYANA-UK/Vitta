@@ -1,6 +1,6 @@
 # Medical Bill Analysis Backend
 
-Backend for the AI-powered medical bill analysis platform. This is **Phase 1: Foundation** — it provides a complete, working backend with a mock pipeline so the frontend and other team members can build against real API shapes before the real extraction and Rust rules engine are integrated.
+Backend for the AI-powered medical bill analysis platform. This is **Phase 1: Foundation** — it provides a complete, working backend with a mock pipeline so the frontend and other team members can build against real API shapes before the real extraction engine is integrated.
 
 ## Tech Stack
 
@@ -28,6 +28,7 @@ medical-bill-backend/
 │   ├── services/
 │   │   ├── storage.py       # Local + S3 storage abstraction
 │   │   ├── pipeline.py      # Mock analysis pipeline + status transitions
+│   │   ├── rules_engine.py  # HTTP client for the Rust bill_rules service
 │   │   └── mock_data.py     # Realistic mock ParsedBill generator
 │   └── core/
 │       └── security.py      # Storage key generation, filename sanitization
@@ -81,7 +82,21 @@ source venv/bin/activate
 pip install -r requirements.txt
 ```
 
-### 4. Run the server
+### 4. Run the Rust rules engine (optional, recommended)
+
+The deterministic rules engine is a small Axum service written in Rust:
+
+```bash
+cd ../bill_rules
+cargo run
+# → listening on 0.0.0.0:3001
+```
+
+Health check: http://localhost:3001/health
+
+> **Note:** If the Rust service is not running, the Python backend logs a warning and continues **without** deterministic flags (graceful degradation). To disable the call entirely, set `RULES_ENGINE_ENABLED=false` in `.env`.
+
+### 5. Run the server
 
 ```bash
 uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
@@ -171,7 +186,27 @@ PIPELINE_DELAY_SECONDS=3.0
 
 # Use the mock pipeline (true) or real extraction (false, not yet implemented)
 MOCK_PIPELINE=true
+
+# Rust rules engine
+RULES_ENGINE_URL=http://localhost:3001
+RULES_ENGINE_TIMEOUT_SECONDS=5.0
+RULES_ENGINE_ENABLED=true
 ```
+
+### Rules engine integration
+
+After the mock (or real) extraction generates a `ParsedBill`, the pipeline sends
+the rules-relevant subset (`document_id`, `status`, `service_date`, `line_items`,
+`totals`) to the Rust service at `POST /apply-rules`. The response's flags are
+merged back into the full bill by line-item id.
+
+The client in `app/services/rules_engine.py` is the **only** place that knows
+how to talk to the Rust service. Behavior:
+
+- `RULES_ENGINE_ENABLED=false` → skips the call entirely
+- Service unreachable or timeout → logs a warning, returns bill unchanged
+- HTTP error (4xx/5xx) → logs the status code, returns bill unchanged
+- Unexpected exception → logs the traceback, returns bill unchanged
 
 ## Shared Data Contract (ParsedBill)
 
