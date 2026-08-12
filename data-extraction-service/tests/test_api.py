@@ -12,7 +12,7 @@ from app.models import (
     FieldConfidence,
     LineItem,
     ParsedBill,
-    TotalsBlock,
+    Totals,
 )
 
 client = TestClient(app)
@@ -26,8 +26,8 @@ def _make_draft_bill() -> ParsedBill:
         verified=False,
     )
     line = LineItem(
-        line_number=1,
-        cpt_hcpcs_code="99214",
+        id="LI-1",
+        cpt_hcpcs="99214",
         charge_amount=200.0,
         allowed_amount=170.0,
         paid_amount=136.0,
@@ -35,15 +35,16 @@ def _make_draft_bill() -> ParsedBill:
         code_confidence=conf,
         amount_confidence=conf,
     )
-    totals = TotalsBlock(
-        billed_total=200.0,
-        adjustments_total=30.0,
-        paid_total=136.0,
-        patient_responsibility_total=34.0,
+    totals = Totals(
+        billed=200.0,
+        allowed=170.0,
+        insurance_paid=136.0,
+        patient_responsibility=34.0,
     )
     return ParsedBill(
         document_id="api-test-doc",
-        metadata=DocumentMetadata(document_type=DocumentType.BILL),
+        status="processing",
+        metadata=DocumentMetadata(document_type="bill"),
         line_items=[line],
         totals=totals,
     )
@@ -78,7 +79,7 @@ class TestExtractEndpoint:
         assert data["document_id"] == "api-extract-test"
         assert data["metadata"]["document_type"] == "bill"
         assert len(data["line_items"]) == 1
-        assert data["line_items"][0]["cpt_hcpcs_code"] == "99214"
+        assert data["line_items"][0]["cpt_hcpcs"] == "99214"
 
     def test_extract_empty_text_400(self):
         resp = client.post("/extract", json={"raw_ocr_text": "   "})
@@ -100,7 +101,7 @@ class TestValidateEndpoint:
 
     def test_validate_invalid_code_flagged(self):
         bill = _make_draft_bill()
-        bill.line_items[0].cpt_hcpcs_code = "99999"
+        bill.line_items[0].cpt_hcpcs = "99999"
         resp = client.post("/validate", json={"parsed_bill": bill.model_dump(mode="json")})
         assert resp.status_code == 200
         data = resp.json()

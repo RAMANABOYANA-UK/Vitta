@@ -4,6 +4,11 @@ This service is the gatekeeper: nothing gets marked `verified: true` unless it
 passes all checks. It sets `verified: false` and appropriate `warning` entries
 for anything that fails or is ambiguous. Downstream services trust the `verified`
 flag without re-checking, so this must be reliable.
+
+The output ParsedBill is aligned to the existing Vitta contract. Validation
+results are attached to line items via the extension fields (`code_confidence`,
+`amount_confidence`, `code_validation`, `icd10_validations`, etc.) and flags
+are raised on line items for any issues found.
 """
 
 from __future__ import annotations
@@ -17,10 +22,11 @@ from app.models import (
     DocumentType,
     ExtractionWarning,
     FieldConfidence,
+    Flag,
     LineItem,
     ParsedBill,
     Provenance,
-    TotalsBlock,
+    Totals,
     VerificationStatus,
     WarningSeverity,
 )
@@ -58,8 +64,7 @@ class ValidationService:
             self._validate_line(line, warnings)
 
         # Validate totals (if present) and reconcile against line items
-        if bill.totals is not None:
-            self._validate_totals(bill.totals, bill.line_items, warnings)
+        self._validate_totals(bill.totals, bill.line_items, warnings)
 
         bill.warnings = warnings
         return bill
@@ -86,8 +91,22 @@ class ValidationService:
     def _validate_cpt_hcpcs(
         self, line: LineItem, warnings: List[ExtractionWarning]
     ) -> None:
-        code = line.cpt_hcpcs_code.strip().upper()
+        code = (line.cpt_hcpcs or "").strip().upper()
         confidence = line.code_confidence
+
+        if not code:
+            # No code present — flag as unverified
+            if confidence is not None:
+                confidence.verified = False
+                confidence.verification_status = VerificationStatus.UNVERIFIED
+            self._add_warning(
+                warnings,
+                code="MISSING_CODE",
+                severity=WarningSeverity.MEDIUM,
+                message=f"Line {line.id} has no CPT/HCPCS code",
+                field="cpt_hcpcs",
+            )
+            return
 
         if not ReferenceDataService.looks_like_cpt(code):
             # Malformed code — not even the right format
@@ -98,14 +117,15 @@ class ValidationService:
                 matched_against="bundle",
                 notes=["Code is not in a valid CPT/HCPCS format"],
             )
-            self._mark_unverified(
-                confidence,
-                "code",
-                f"CPT/HCPCS code '{code}' is not in a valid format",
-                line.line_number,
-                warnings,
-                severity=WarningSeverity.HIGH,
-            )
+            if confidence is not None:
+                self._mark_unverified(
+                    confidence,
+                    "cpt_hcpcs",
+                    f"CPT/HCPCS code '{code}' is not in a valid format",
+                    line.id,
+                    warnings,
+                    severity=WarningSeverity.HIGH,
+                )
             return
 
         record = self.ref_data.lookup_cpt_hcpcs(code)
@@ -121,14 +141,15 @@ class ValidationService:
                 matched_against="bundle",
                 notes=["Code not found in reference dataset — requires manual verification"],
             )
-            self._mark_unverified(
-                confidence,
-                "code",
-                f"CPT/HCPCS code '{code}' not found in reference data",
-                line.line_number,
-                warnings,
-                severity=WarningSeverity.MEDIUM,
-            )
+            if confidence is not None:
+                self._mark_unverified(
+                    confidence,
+                    "cpt_hcpcs",
+                    f"CPT/HCPCS code '{code}' not found in reference data",
+                    line.id,
+                    warnings,
+                    severity=WarningSeverity.MEDIUM,
+                )
             return
 
         if record.is_deprecated:
@@ -143,14 +164,15 @@ class ValidationService:
                 matched_against=record.source,
                 notes=["Code is deprecated/retired"],
             )
-            self._mark_unverified(
-                confidence,
-                "code",
-                f"CPT/HCPCS code '{code}' is deprecated/retired: {record.description}",
-                line.line_number,
-                warnings,
-                severity=WarningSeverity.HIGH,
-            )
+            if confidence is not None:
+                self._mark_unverified(
+                    confidence,
+                    "cpt_hcpcs",
+                    f"CPT/HCPCS code '{code}' is deprecated/retired: {record.description}",
+                    line.id,
+                    warnings,
+                    severity=WarningSeverity.HIGH,
+                )
             return
 
         # Valid code
@@ -164,16 +186,17 @@ class ValidationService:
             matched_against=record.source,
             notes=["Code verified against reference dataset"],
         )
-        confidence.verified = True
-        confidence.verification_status = VerificationStatus.VERIFIED
-        if not line.code_description:
-            line.code_description = record.description
+        if confidence is not None:
+            confidence.verified = True
+            confidence.verification_status = VerificationStatus.VERIFIED
+        if not line.description:
+            line.description = record.description
 
     def _validate_icd10(
         self, line: LineItem, warnings: List[ExtractionWarning]
     ) -> None:
         line.icd10_validations = []
-        for icd in line.icd10_codes:
+        for icd in line.icd10:
             code = icd.strip().upper()
             record = self.ref_data.lookup_icd10(code)
 
@@ -191,9 +214,9 @@ class ValidationService:
                 if line.icd10_confidence is not None:
                     self._mark_unverified(
                         line.icd10_confidence,
-                        "icd10_codes",
+                        "icd10",
                         f"ICD-10 code '{code}' failed validation ({status.value})",
-                        line.line_number,
+                        line.id,
                         warnings,
                         severity=WarningSeverity.MEDIUM,
                     )
@@ -227,7 +250,7 @@ class ValidationService:
         self, line: LineItem, warnings: List[ExtractionWarning]
     ) -> None:
         line.modifier_validations = []
-        for mod in line.modifier_codes:
+        for mod in line.modifiers:
             code = mod.strip().upper()
             record = self.ref_data.lookup_modifier(code)
 
@@ -246,14 +269,15 @@ class ValidationService:
                         notes=["Modifier not found in reference dataset"],
                     )
                 )
-                self._mark_unverified(
-                    line.code_confidence,
-                    "modifier_codes",
-                    f"Modifier '{code}' failed validation ({status.value})",
-                    line.line_number,
-                    warnings,
-                    severity=WarningSeverity.LOW,
-                )
+                if line.code_confidence is not None:
+                    self._mark_unverified(
+                        line.code_confidence,
+                        "modifiers",
+                        f"Modifier '{code}' failed validation ({status.value})",
+                        line.id,
+                        warnings,
+                        severity=WarningSeverity.LOW,
+                    )
             else:
                 line.modifier_validations.append(
                     CodeValidation(
@@ -280,15 +304,15 @@ class ValidationService:
         # If any amount is missing, we can't fully reconcile
         missing = [k for k, v in amounts.items() if v is None]
         if missing:
-            line.amount_confidence.verified = False
-            line.amount_confidence.verification_status = VerificationStatus.UNVERIFIED
+            if line.amount_confidence is not None:
+                line.amount_confidence.verified = False
+                line.amount_confidence.verification_status = VerificationStatus.UNVERIFIED
             self._add_warning(
                 warnings,
                 code="MISSING_AMOUNT",
                 severity=WarningSeverity.MEDIUM,
-                message=f"Missing amount field(s) on line {line.line_number}: {', '.join(missing)}",
+                message=f"Missing amount field(s) on line {line.id}: {', '.join(missing)}",
                 field="amounts",
-                line_number=line.line_number,
             )
             return
 
@@ -318,11 +342,13 @@ class ValidationService:
         }
 
         if all_ok:
-            line.amount_confidence.verified = True
-            line.amount_confidence.verification_status = VerificationStatus.VERIFIED
+            if line.amount_confidence is not None:
+                line.amount_confidence.verified = True
+                line.amount_confidence.verification_status = VerificationStatus.VERIFIED
         else:
-            line.amount_confidence.verified = False
-            line.amount_confidence.verification_status = VerificationStatus.UNVERIFIED
+            if line.amount_confidence is not None:
+                line.amount_confidence.verified = False
+                line.amount_confidence.verification_status = VerificationStatus.UNVERIFIED
             problems = []
             if not patient_resp_ok:
                 problems.append(
@@ -335,9 +361,17 @@ class ValidationService:
                 warnings,
                 code="AMOUNT_MISMATCH",
                 severity=WarningSeverity.HIGH,
-                message=f"Line {line.line_number} amount reconciliation failed: {'; '.join(problems)}",
+                message=f"Line {line.id} amount reconciliation failed: {'; '.join(problems)}",
                 field="amounts",
-                line_number=line.line_number,
+            )
+            # Also raise a flag on the line item (Vitta contract)
+            line.flags.append(
+                Flag(
+                    type="amount_mismatch",
+                    severity="critical",
+                    message=f"Amount reconciliation failed: {'; '.join(problems)}",
+                    rule_id="RULE-RECON-001",
+                )
             )
 
     # ------------------------------------------------------------------
@@ -345,7 +379,7 @@ class ValidationService:
     # ------------------------------------------------------------------
     def _validate_totals(
         self,
-        totals: TotalsBlock,
+        totals: Totals,
         line_items: List[LineItem],
         warnings: List[ExtractionWarning],
     ) -> None:
@@ -354,31 +388,24 @@ class ValidationService:
         issues = []
 
         # Check totals internal consistency
-        if all(
-            v is not None
-            for v in [
-                totals.billed_total,
-                totals.adjustments_total,
-                totals.paid_total,
-                totals.patient_responsibility_total,
-            ]
+        if (
+            totals.billed is not None
+            and totals.allowed is not None
+            and totals.insurance_paid is not None
+            and totals.patient_responsibility is not None
         ):
-            expected = round(
-                totals.billed_total
-                - totals.adjustments_total
-                - totals.paid_total,
-                2,
-            )
-            ok = abs(expected - totals.patient_responsibility_total) <= self.amount_tolerance
+            adjustments = totals.billed - totals.allowed
+            expected = round(totals.billed - adjustments - totals.insurance_paid, 2)
+            ok = abs(expected - totals.patient_responsibility) <= self.amount_tolerance
             totals.reconciliation = {
                 "billed_minus_adjustments_minus_paid": expected,
                 "matches_patient_responsibility": ok,
             }
             if not ok:
                 issues.append(
-                    f"billed ({totals.billed_total}) - adjustments ({totals.adjustments_total}) "
-                    f"- paid ({totals.paid_total}) = {expected}, but stated patient "
-                    f"responsibility is {totals.patient_responsibility_total}"
+                    f"billed ({totals.billed}) - adjustments ({adjustments}) "
+                    f"- paid ({totals.insurance_paid}) = {expected}, but stated patient "
+                    f"responsibility is {totals.patient_responsibility}"
                 )
                 self._add_warning(
                     warnings,
@@ -390,31 +417,31 @@ class ValidationService:
 
         # Check line-item sums against stated totals where both are available
         self._check_line_sum(
-            "billed_total",
+            "billed",
             line_items,
             lambda li: li.charge_amount,
-            totals.billed_total,
+            totals.billed,
             warnings,
         )
         self._check_line_sum(
-            "allowed_total",
+            "allowed",
             line_items,
             lambda li: li.allowed_amount,
-            totals.allowed_total,
+            totals.allowed,
             warnings,
         )
         self._check_line_sum(
-            "paid_total",
+            "insurance_paid",
             line_items,
             lambda li: li.paid_amount,
-            totals.paid_total,
+            totals.insurance_paid,
             warnings,
         )
         self._check_line_sum(
-            "patient_responsibility_total",
+            "patient_responsibility",
             line_items,
             lambda li: li.patient_responsibility,
-            totals.patient_responsibility_total,
+            totals.patient_responsibility,
             warnings,
         )
 
@@ -460,7 +487,7 @@ class ValidationService:
         confidence: FieldConfidence,
         field: str,
         reason: str,
-        line_number: Optional[int],
+        line_id: Optional[str],
         warnings: List[ExtractionWarning],
         severity: WarningSeverity = WarningSeverity.MEDIUM,
     ) -> None:
@@ -473,7 +500,6 @@ class ValidationService:
             severity=severity,
             message=reason,
             field=field,
-            line_number=line_number,
         )
 
     def _add_warning(

@@ -1,10 +1,19 @@
 """ParsedBill — the shared contract for the entire medical bill/EOB analysis platform.
 
-This is the single source of truth that downstream services (Rust rules engine,
-grounded LLM letter generator) trust without re-checking. Every extracted value
-carries provenance (where it came from) and a verified flag. Nothing is silently
-passed through unverified — low-confidence or unverified values are flagged
-explicitly.
+This model is aligned to the existing Vitta contract (see
+`medical-bill-backend/app/schemas.py` and `bill_rules/src/types.rs`) so that the
+output of this service feeds directly into the backend → Rust rules engine →
+LLM letter generator pipeline.
+
+The primary fields match the Vitta contract exactly. Richer per-field
+confidence, provenance, and validation data from this service are preserved as
+*extension* fields (e.g. `code_confidence`, `amount_confidence`,
+`code_validation`, `pricing_anomaly`, `appeal_success`, `warnings`) so no
+information is lost.
+
+Core rule: never silently pass through an unverified or low-confidence value —
+flag it explicitly. Downstream services trust the `verified` flag without
+re-checking it, so it has to be reliable.
 """
 
 from __future__ import annotations
@@ -22,6 +31,14 @@ from pydantic import BaseModel, Field, field_validator, model_validator
 class DocumentType(str, Enum):
     BILL = "bill"
     EOB = "eob"
+
+
+class DocumentStatus(str, Enum):
+    uploaded = "uploaded"
+    processing = "processing"
+    analyzed = "analyzed"
+    letter_ready = "letter_ready"
+    error = "error"
 
 
 class VerificationStatus(str, Enum):
@@ -48,7 +65,7 @@ class PlaceOfService(str, Enum):
 
 
 # ---------------------------------------------------------------------------
-# Provenance & confidence
+# Provenance & confidence (extensions)
 # ---------------------------------------------------------------------------
 class Provenance(BaseModel):
     """Pointer back to the source location of an extracted value."""
@@ -95,7 +112,7 @@ class FieldConfidence(BaseModel):
 
 
 # ---------------------------------------------------------------------------
-# Code validation
+# Code validation (extensions)
 # ---------------------------------------------------------------------------
 class CodeValidation(BaseModel):
     """Result of validating a code against CMS/AMA reference data."""
@@ -125,37 +142,46 @@ class CodeValidation(BaseModel):
 
 
 # ---------------------------------------------------------------------------
-# Line item
+# Flag — matches the Vitta contract (bill_rules/src/types.rs, schemas.py)
+# ---------------------------------------------------------------------------
+class Flag(BaseModel):
+    """A single flagged issue on a line item or the bill as a whole."""
+
+    type: str = Field(..., description="Flag type, e.g. 'price_inflated'")
+    severity: str = Field(
+        ..., description="One of: info, warning, critical, high"
+    )
+    message: str = Field(..., description="Human-readable message")
+    rule_id: Optional[str] = Field(
+        default=None, description="Identifier of the rule that produced this flag"
+    )
+    shap_contribution: Optional[float] = Field(
+        default=None, description="SHAP contribution value, if applicable"
+    )
+
+
+# ---------------------------------------------------------------------------
+# Line item — matches the Vitta contract + extensions
 # ---------------------------------------------------------------------------
 class LineItem(BaseModel):
-    """A single line item from a bill or EOB."""
+    """A single line item on a medical bill / EOB.
 
-    line_number: int = Field(..., description="1-based line number within the document")
+    Primary fields match the Vitta contract. Extension fields (confidence,
+    validation, reconciliation) carry this service's richer data.
+    """
 
-    # Codes
-    cpt_hcpcs_code: str = Field(..., description="CPT or HCPCS procedure code")
-    code_description: Optional[str] = Field(
-        default=None, description="Description of the procedure code"
+    id: str = Field(..., description="Unique line item identifier")
+    page: int = Field(default=1, description="Page number in the source document")
+    description: str = Field(default="", description="Description of the service")
+    cpt_hcpcs: Optional[str] = Field(
+        default=None, description="CPT or HCPCS procedure code"
     )
-    icd10_codes: List[str] = Field(
-        default_factory=list, description="ICD-10 diagnosis code(s) for this line"
+    icd10: List[str] = Field(
+        default_factory=list, description="ICD-10 diagnosis code(s)"
     )
-    modifier_codes: List[str] = Field(
-        default_factory=list, description="CPT modifier code(s), e.g. ['25', '59']"
-    )
-
-    # Service details
     units: float = Field(default=1.0, ge=0.0, description="Number of units billed")
-    date_of_service: Optional[date] = Field(
-        default=None, description="Date of service for this line"
-    )
-    place_of_service: PlaceOfService = Field(
-        default=PlaceOfService.UNKNOWN, description="Place of service code"
-    )
-
-    # Amounts (in dollars)
-    charge_amount: Optional[float] = Field(
-        default=None, ge=0.0, description="Amount charged by the provider"
+    charge_amount: float = Field(
+        default=0.0, ge=0.0, description="Amount charged by the provider"
     )
     allowed_amount: Optional[float] = Field(
         default=None, ge=0.0, description="Amount allowed by the payer"
@@ -166,19 +192,23 @@ class LineItem(BaseModel):
     patient_responsibility: Optional[float] = Field(
         default=None, ge=0.0, description="Amount the patient owes for this line"
     )
-
-    # Per-field confidence & provenance
-    code_confidence: FieldConfidence = Field(
-        ..., description="Confidence/verification for the CPT/HCPCS code"
+    modifiers: List[str] = Field(
+        default_factory=list, description="CPT modifier code(s)"
     )
-    amount_confidence: FieldConfidence = Field(
-        ..., description="Confidence/verification for the amounts on this line"
+    flags: List[Flag] = Field(
+        default_factory=list, description="Flags raised on this line item"
+    )
+
+    # --- Extensions (this service's richer data) ---
+    code_confidence: Optional[FieldConfidence] = Field(
+        default=None, description="Confidence/verification for the CPT/HCPCS code"
+    )
+    amount_confidence: Optional[FieldConfidence] = Field(
+        default=None, description="Confidence/verification for the amounts"
     )
     icd10_confidence: Optional[FieldConfidence] = Field(
         default=None, description="Confidence/verification for ICD-10 codes"
     )
-
-    # Validation results
     code_validation: Optional[CodeValidation] = Field(
         default=None, description="Result of validating the CPT/HCPCS code"
     )
@@ -188,87 +218,47 @@ class LineItem(BaseModel):
     modifier_validations: List[CodeValidation] = Field(
         default_factory=list, description="Results of validating each modifier"
     )
-
-    # Reconciliation check
     reconciliation: Optional[Dict[str, Any]] = Field(
         default=None,
-        description="Result of amount reconciliation for this line, e.g. "
-        "{'charge_minus_allowed': 50.0, 'allowed_minus_paid': 20.0, "
-        "'matches_patient_responsibility': true}",
+        description="Result of amount reconciliation for this line",
     )
-
-    @model_validator(mode="after")
-    def validate_line_reconciliation(self) -> "LineItem":
-        """Check that charge - allowed = adjustment and allowed - paid = patient responsibility."""
-        if (
-            self.charge_amount is not None
-            and self.allowed_amount is not None
-            and self.paid_amount is not None
-            and self.patient_responsibility is not None
-        ):
-            adjustment = round(self.charge_amount - self.allowed_amount, 2)
-            patient_resp_from_recon = round(self.allowed_amount - self.paid_amount, 2)
-            matches = abs(patient_resp_from_recon - self.patient_responsibility) < 0.01
-            self.reconciliation = {
-                "charge_minus_allowed": adjustment,
-                "allowed_minus_paid": patient_resp_from_recon,
-                "matches_patient_responsibility": matches,
-            }
-        return self
 
 
 # ---------------------------------------------------------------------------
-# Totals block
+# Totals — matches the Vitta contract + extensions
 # ---------------------------------------------------------------------------
-class TotalsBlock(BaseModel):
-    """Document-level totals. Must satisfy: billed - adjustments - paid = patient_responsibility."""
+class Totals(BaseModel):
+    """Aggregated totals for the bill.
 
-    billed_total: Optional[float] = Field(
-        default=None, ge=0.0, description="Total amount billed"
-    )
-    allowed_total: Optional[float] = Field(
+    Primary fields match the Vitta contract. Extension fields carry this
+    service's reconciliation data.
+    """
+
+    billed: float = Field(default=0.0, ge=0.0, description="Total amount billed")
+    allowed: Optional[float] = Field(
         default=None, ge=0.0, description="Total amount allowed"
     )
-    paid_total: Optional[float] = Field(
-        default=None, ge=0.0, description="Total amount paid"
+    insurance_paid: Optional[float] = Field(
+        default=None, ge=0.0, description="Total amount paid by insurance"
     )
-    patient_responsibility_total: Optional[float] = Field(
+    patient_responsibility: Optional[float] = Field(
         default=None, ge=0.0, description="Total patient responsibility"
     )
+    potential_savings: Optional[float] = Field(
+        default=None, ge=0.0, description="Estimated potential savings"
+    )
+
+    # --- Extensions ---
     adjustments_total: Optional[float] = Field(
         default=None, ge=0.0, description="Total adjustments (billed - allowed)"
     )
-
-    # Reconciliation
     reconciliation: Optional[Dict[str, Any]] = Field(
-        default=None,
-        description="Result of totals reconciliation, e.g. "
-        "{'billed_minus_adjustments_minus_paid': 0.0, "
-        "'matches_patient_responsibility': true}",
+        default=None, description="Result of totals reconciliation"
     )
-
-    @model_validator(mode="after")
-    def validate_totals_reconciliation(self) -> "TotalsBlock":
-        """Verify billed - adjustments - paid = patient_responsibility."""
-        if (
-            self.billed_total is not None
-            and self.adjustments_total is not None
-            and self.paid_total is not None
-            and self.patient_responsibility_total is not None
-        ):
-            computed = round(
-                self.billed_total - self.adjustments_total - self.paid_total, 2
-            )
-            matches = abs(computed - self.patient_responsibility_total) < 0.01
-            self.reconciliation = {
-                "billed_minus_adjustments_minus_paid": computed,
-                "matches_patient_responsibility": matches,
-            }
-        return self
 
 
 # ---------------------------------------------------------------------------
-# Pricing anomaly & appeal success
+# Pricing anomaly & appeal success (extensions)
 # ---------------------------------------------------------------------------
 class ShapExplanation(BaseModel):
     """A single human-readable SHAP feature contribution, pre-formatted for an LLM."""
@@ -334,7 +324,47 @@ class AppealSuccess(BaseModel):
 
 
 # ---------------------------------------------------------------------------
-# Extraction warnings
+# Appeal prediction — matches the Vitta contract + extensions
+# ---------------------------------------------------------------------------
+class AppealPrediction(BaseModel):
+    """Appeal success prediction, matching the Vitta contract."""
+
+    success_probability: float = Field(
+        ..., ge=0.0, le=1.0, description="Probability of appeal success"
+    )
+    confidence_interval: List[float] = Field(
+        default_factory=list, description="Confidence interval [low, high]"
+    )
+    top_factors: List[str] = Field(
+        default_factory=list, description="Top factors supporting the prediction"
+    )
+
+    # --- Extensions ---
+    recommendation: Optional[str] = Field(
+        default=None,
+        description="One of: 'strong_appeal', 'moderate_appeal', 'weak_appeal', 'no_appeal'",
+    )
+    explanation: List[ShapExplanation] = Field(
+        default_factory=list,
+        description="Structured SHAP-style feature contributions, pre-formatted for LLM",
+    )
+
+
+# ---------------------------------------------------------------------------
+# Letter — matches the Vitta contract
+# ---------------------------------------------------------------------------
+class Letter(BaseModel):
+    """An appeal letter, matching the Vitta contract."""
+
+    status: str = Field(default="draft", description="draft | verified | sent")
+    content_markdown: str = Field(default="", description="Letter content in markdown")
+    verified_fields: List[str] = Field(
+        default_factory=list, description="Fields verified before sending"
+    )
+
+
+# ---------------------------------------------------------------------------
+# Extraction warnings (extensions)
 # ---------------------------------------------------------------------------
 class ExtractionWarning(BaseModel):
     """A warning about a low-confidence field, illegible region, or missing field."""
@@ -357,7 +387,7 @@ class ExtractionWarning(BaseModel):
 
 
 # ---------------------------------------------------------------------------
-# Document metadata
+# Document metadata (extensions)
 # ---------------------------------------------------------------------------
 class DocumentMetadata(BaseModel):
     """Metadata about the source document."""
@@ -396,28 +426,70 @@ class DocumentMetadata(BaseModel):
 
 
 # ---------------------------------------------------------------------------
-# ParsedBill — the top-level contract
+# ParsedBill — the top-level contract (aligned to Vitta + extensions)
 # ---------------------------------------------------------------------------
 class ParsedBill(BaseModel):
     """The validated, structured representation of a medical bill or EOB.
 
-    This is the shared contract for the whole system. Downstream services trust
-    the `verified` flags without re-checking, so unverified values are always
-    flagged explicitly via warnings and verification_status.
+    Primary fields match the existing Vitta contract so this service's output
+    feeds directly into the backend → Rust rules engine → LLM letter generator
+    pipeline. Extension fields carry this service's richer confidence,
+    provenance, validation, and scoring data.
     """
 
-    schema_version: str = Field(
-        default="1.0.0", description="Version of the ParsedBill schema"
+    document_id: str = Field(..., description="Unique identifier for this document")
+    status: DocumentStatus = Field(
+        default=DocumentStatus.processing, description="Document processing status"
     )
-    document_id: str = Field(
-        ..., description="Unique identifier for this parsed document"
+    uploaded_at: datetime = Field(
+        default_factory=datetime.utcnow, description="When the document was uploaded"
     )
-    metadata: DocumentMetadata = Field(..., description="Document metadata")
+    source_type: str = Field(
+        default="ocr_extraction_v0", description="Source of the extraction"
+    )
+    patient: Dict[str, Any] = Field(
+        default_factory=dict, description="De-identified patient information"
+    )
+    provider: Dict[str, Any] = Field(
+        default_factory=dict, description="Provider information"
+    )
+    payer: Dict[str, Any] = Field(
+        default_factory=dict, description="Payer information"
+    )
+    service_date: Optional[date] = Field(
+        default=None, description="Date of service"
+    )
     line_items: List[LineItem] = Field(
         default_factory=list, description="Extracted line items"
     )
-    totals: Optional[TotalsBlock] = Field(
-        default=None, description="Document-level totals"
+    totals: Totals = Field(
+        default_factory=Totals, description="Document-level totals"
+    )
+    denial_codes: List[Dict[str, Any]] = Field(
+        default_factory=list, description="Denial codes identified"
+    )
+    appeal_prediction: Optional[AppealPrediction] = Field(
+        default=None, description="Appeal success prediction"
+    )
+    explanation: Optional[str] = Field(
+        default=None, description="Natural-language explanation of the analysis"
+    )
+    letter: Optional[Letter] = Field(
+        default=None, description="Generated appeal letter"
+    )
+    audit: Dict[str, Any] = Field(
+        default_factory=dict, description="Audit metadata"
+    )
+
+    # --- Extensions (this service's richer data) ---
+    schema_version: str = Field(
+        default="1.0.0", description="Version of the ParsedBill schema"
+    )
+    document_type: Optional[DocumentType] = Field(
+        default=None, description="Whether this is a bill or an EOB"
+    )
+    metadata: Optional[DocumentMetadata] = Field(
+        default=None, description="Document metadata (extension)"
     )
     pricing_anomaly: Optional[PricingAnomaly] = Field(
         default=None, description="Pricing anomaly score and explanation"
@@ -438,14 +510,3 @@ class ParsedBill(BaseModel):
         if not v.strip():
             raise ValueError("document_id must not be empty")
         return v.strip()
-
-    @model_validator(mode="after")
-    def validate_metadata_confidence(self) -> "ParsedBill":
-        """Ensure metadata confidence is present for all populated metadata fields."""
-        if self.metadata.metadata_confidence:
-            for field_name in self.metadata.metadata_confidence:
-                if not hasattr(self.metadata, field_name):
-                    raise ValueError(
-                        f"metadata_confidence references unknown field: {field_name}"
-                    )
-        return self

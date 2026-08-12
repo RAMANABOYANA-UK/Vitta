@@ -3,6 +3,11 @@
 Uses Instructor (structured/schema-constrained output) with an LLM to extract
 the document into the ParsedBill schema. Handles both bill and EOB layouts.
 
+The output ParsedBill is aligned to the existing Vitta contract so it feeds
+directly into the backend → Rust rules engine → LLM letter generator pipeline.
+Richer per-field confidence/provenance/validation data is preserved as
+extension fields.
+
 Key design principles:
 - Preserve provenance: every extracted value carries a pointer back to its
   source location (page, bounding box, table cell).
@@ -28,14 +33,16 @@ from typing import Any, Dict, List, Optional, Tuple
 from app.config import settings
 from app.models import (
     DocumentMetadata,
+    DocumentStatus,
     DocumentType,
     ExtractionWarning,
     FieldConfidence,
+    Flag,
     LineItem,
     ParsedBill,
     PlaceOfService,
     Provenance,
-    TotalsBlock,
+    Totals,
     WarningSeverity,
 )
 
@@ -301,7 +308,12 @@ class ExtractionService:
             "4. Line items: a bill lists charges by the provider. An EOB lists the "
             "   same services but adds allowed/paid/patient-responsibility columns. "
             "   Map accordingly.\n"
-            "5. Totals: verify billed - adjustments - paid = patient_responsibility.\n\n"
+            "5. Totals: verify billed - adjustments - paid = patient_responsibility.\n"
+            "6. Populate the Vitta contract fields: line_items[].id, page, description, "
+            "   cpt_hcpcs, icd10, units, charge_amount, allowed_amount, paid_amount, "
+            "   patient_responsibility, modifiers, flags; totals.billed, allowed, "
+            "   insurance_paid, patient_responsibility, potential_savings; provider, "
+            "   payer, patient dicts; service_date; status.\n\n"
             f"Raw OCR text:\n{request.raw_ocr_text}\n\n"
             f"Tokens with provenance:\n{token_summary}\n\n"
             f"Document ID: {document_id}\n"
@@ -379,15 +391,28 @@ class ExtractionService:
 
         # Ensure each line has provenance-bearing confidence
         for li in lines:
-            if li.amount_confidence.provenance is None:
+            if li.amount_confidence is None or li.amount_confidence.provenance is None:
                 li.amount_confidence = conf
+            if li.code_confidence is None:
+                li.code_confidence = conf
             # heuristic lines are never auto-verified
 
+        # Build the Vitta-compatible ParsedBill
         return ParsedBill(
             document_id=document_id,
-            metadata=metadata,
+            status=DocumentStatus.processing,
+            source_type="ocr_extraction_v0_heuristic",
+            service_date=metadata.service_date_start,
+            provider={
+                "name": metadata.provider_name,
+                "npi": metadata.provider_npi,
+            },
+            payer={"name": metadata.payer_name},
+            patient={"account_ref": metadata.patient_account_ref},
             line_items=lines,
-            totals=totals,
+            totals=totals or Totals(),
+            document_type=doc_type,
+            metadata=metadata,
             warnings=warnings,
         )
 
@@ -503,7 +528,7 @@ class ExtractionService:
             # Date of service
             dos = self._extract_dos(window)
 
-            charge = amounts[0] if len(amounts) > 0 else None
+            charge = amounts[0] if len(amounts) > 0 else 0.0
             allowed = amounts[1] if len(amounts) > 1 else None
             paid = amounts[2] if len(amounts) > 2 else None
             patient = amounts[3] if len(amounts) > 3 else None
@@ -517,14 +542,18 @@ class ExtractionService:
 
             line_items.append(
                 LineItem(
-                    line_number=line_no,
-                    cpt_hcpcs_code=code,
+                    id=f"LI-{line_no}-{uuid.uuid4().hex[:8].upper()}",
+                    page=tok.page if tok else 1,
+                    description="",
+                    cpt_hcpcs=code,
+                    icd10=[],
                     units=units,
-                    date_of_service=dos,
                     charge_amount=charge,
                     allowed_amount=allowed,
                     paid_amount=paid,
                     patient_responsibility=patient,
+                    modifiers=[],
+                    flags=[],
                     code_confidence=confidence,
                     amount_confidence=confidence,
                 )
@@ -616,17 +645,17 @@ class ExtractionService:
 
     def _parse_totals(
         self, text: str, lines: List[LineItem], doc_type: DocumentType
-    ) -> Optional[TotalsBlock]:
+    ) -> Optional[Totals]:
         """Extract totals. First try labeled totals in the text; if not found,
         compute from line items."""
-        totals = TotalsBlock()
+        totals = Totals()
 
         # Labeled totals
         mapping = {
-            "billed_total": r"(?:Total\s+Billed|Total\s+Charges|Billed\s+Total)[:\s]+\$?\s?([0-9,]+(?:\.[0-9]{2})?)",
-            "allowed_total": r"(?:Total\s+Allowed|Allowed\s+Total|Total\s+Approved)[:\s]+\$?\s?([0-9,]+(?:\.[0-9]{2})?)",
-            "paid_total": r"(?:Total\s+Paid|Paid\s+Total|Total\s+Payment)[:\s]+\$?\s?([0-9,]+(?:\.[0-9]{2})?)",
-            "patient_responsibility_total": r"(?:Total\s+Patient\s+Responsibility|Patient\s+Responsibility\s+Total|Total\s+You\s+Owe|Amount\s+You\s+Owe)[:\s]+\$?\s?([0-9,]+(?:\.[0-9]{2})?)",
+            "billed": r"(?:Total\s+Billed|Total\s+Charges|Billed\s+Total)[:\s]+\$?\s?([0-9,]+(?:\.[0-9]{2})?)",
+            "allowed": r"(?:Total\s+Allowed|Allowed\s+Total|Total\s+Approved)[:\s]+\$?\s?([0-9,]+(?:\.[0-9]{2})?)",
+            "insurance_paid": r"(?:Total\s+Paid|Paid\s+Total|Total\s+Payment)[:\s]+\$?\s?([0-9,]+(?:\.[0-9]{2})?)",
+            "patient_responsibility": r"(?:Total\s+Patient\s+Responsibility|Patient\s+Responsibility\s+Total|Total\s+You\s+Owe|Amount\s+You\s+Owe)[:\s]+\$?\s?([0-9,]+(?:\.[0-9]{2})?)",
             "adjustments_total": r"(?:Total\s+Adjustments?|Adjustments?\s+Total)[:\s]+\$?\s?([0-9,]+(?:\.[0-9]{2})?)",
         }
         for field, pattern in mapping.items():
@@ -638,32 +667,29 @@ class ExtractionService:
                     pass
 
         # If labeled total for a field is missing, use the line item sum (marked as computed)
-        if totals.billed_total is None:
+        if totals.billed == 0.0:
             vals = [li.charge_amount for li in lines if li.charge_amount is not None]
             if vals:
-                totals.billed_total = round(sum(vals), 2)
-        if totals.allowed_total is None:
+                totals.billed = round(sum(vals), 2)
+        if totals.allowed is None:
             vals = [li.allowed_amount for li in lines if li.allowed_amount is not None]
             if vals:
-                totals.allowed_total = round(sum(vals), 2)
-        if totals.paid_total is None:
+                totals.allowed = round(sum(vals), 2)
+        if totals.insurance_paid is None:
             vals = [li.paid_amount for li in lines if li.paid_amount is not None]
             if vals:
-                totals.paid_total = round(sum(vals), 2)
-        if totals.patient_responsibility_total is None and doc_type == DocumentType.EOB:
+                totals.insurance_paid = round(sum(vals), 2)
+        if totals.patient_responsibility is None and doc_type == DocumentType.EOB:
             vals = [li.patient_responsibility for li in lines if li.patient_responsibility is not None]
             if vals:
-                totals.patient_responsibility_total = round(sum(vals), 2)
+                totals.patient_responsibility = round(sum(vals), 2)
 
         # If nothing was found, return None
-        if all(
-            v is None
-            for v in [
-                totals.billed_total,
-                totals.allowed_total,
-                totals.paid_total,
-                totals.patient_responsibility_total,
-            ]
+        if (
+            totals.billed == 0.0
+            and totals.allowed is None
+            and totals.insurance_paid is None
+            and totals.patient_responsibility is None
         ):
             return None
 
