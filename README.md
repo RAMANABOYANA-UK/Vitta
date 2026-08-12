@@ -1,4 +1,6 @@
 MedBills — Data Extraction & ML Models Service
+
+
 The Data Extraction & ML Models microservice for an AI-powered medical bill / EOB (Explanation of Benefits) analysis platform. This service turns raw OCR output into clean, validated, structured ParsedBill data that downstream services (a Rust rules engine and a grounded LLM letter generator) trust without re-checking.
 
 Core rule: never silently pass through an unverified or low-confidence value — flag it explicitly. Downstream services trust the verified field without re-checking it, so it has to be reliable.
