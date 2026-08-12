@@ -15,7 +15,8 @@ env/
 .env
 
 # Trained model artifacts (large binary files — retrained via scripts/train_models.py)
-models/
+# Only the top-level models/ dir (not app/models/ source code)
+/models/
 
 # Test / cache
 .pytest_cache/
