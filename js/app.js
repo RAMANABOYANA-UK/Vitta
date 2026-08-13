@@ -1,344 +1,95 @@
 /* ============================================================
-   VITTA — App Dashboard Logic
+   VITTA — App Dashboard Logic (API-contract wired)
+   ============================================================
+   Consumes VittaAPI (js/api.js) — a mock of the real backend
+   contract. Swap the mock for the real HTTP client when ready.
    ============================================================ */
 
 (function () {
   "use strict";
 
   /* ==========================================================
-     MOCK DATA
+     API INSTANCE
      ========================================================== */
 
-  const SAMPLE_ER = {
-    id: "er",
-    name: "Emergency room visit",
-    provider: "St. Mary's Medical Center",
-    insurer: "BlueCross Shield TX",
-    claim: "2025-8841",
-    serviceDate: "Jan 22, 2026",
-    totalBilled: 7842.5,
-    fairLow: 3100,
-    fairHigh: 4200,
-    overcharge: 2940,
-    successChance: 84,
-    paid: null, // not yet paid
-    lineItems: [
-      { date: "01/22/26", code: "99283", desc: "Emergency dept visit, level 3", qty: 1, amount: 1450.0, issue: 1 },
-      { date: "01/22/26", code: "99284", desc: "Emergency dept visit, level 4 (unbundled)", qty: 1, amount: 1120.0, issue: 1 },
-      { date: "01/22/26", code: "99285", desc: "Emergency dept visit, level 5 (upcoded)", qty: 1, amount: 890.0, issue: 2 },
-      { date: "01/22/26", code: "93005", desc: "Electrocardiogram, routine", qty: 1, amount: 320.0, issue: null },
-      { date: "01/22/26", code: "81003", desc: "Urinalysis, automated", qty: 1, amount: 145.0, issue: null },
-      { date: "01/22/26", code: "80048", desc: "Metabolic panel (duplicate)", qty: 2, amount: 930.0, issue: 3 },
-      { date: "01/22/26", code: "99221", desc: "Initial hospital care, low complexity", qty: 1, amount: 1040.0, issue: null },
-      { date: "01/22/26", code: "J1200", desc: "Dexamethasone sodium phosphate 1mg", qty: 12, amount: 240.0, issue: null },
-      { date: "01/22/26", code: "J0202", desc: "Alteplase, thrombolytic therapy", qty: 1, amount: 1870.5, issue: null },
-      { date: "01/22/26", code: "A0428", desc: "Ambulance, BLS, non-emergency", qty: 1, amount: 837.0, issue: null },
-    ],
-    issues: [
-      {
-        id: 1,
-        title: "Unbundled procedure codes",
-        severity: "high",
-        tone: "red",
-        amount: 1120,
-        confidence: "94% confidence",
-        desc: "CPT 99283 was billed together with CPT 99284 for the same visit. These codes are mutually exclusive — billing both is a frequent unbundling error.",
-        whatHappened: "Two emergency department codes billed for one visit",
-        howToFix: "Request the provider re-bill as a single, correct-level visit code (99284).",
-        evidence: "CPT 99283 & 99284 are mutually exclusive per CPT guidelines.",
-        code: "99283 / 99284",
-      },
-      {
-        id: 2,
-        title: "Possible upcoding",
-        severity: "high",
-        tone: "amber",
-        amount: 890,
-        confidence: "87% confidence",
-        desc: "A Level-5 emergency visit (99285) was billed, but the documented care supports only a Level-4 code (99284). This is a classic upcoding pattern.",
-        whatHappened: "Level-5 visit billed, documentation supports Level-4",
-        howToFix: "Ask your provider to review the chart and correct the code to Level-4.",
-        evidence: "Medical record shows 30-minute visit with no complex decision-making.",
-        code: "99285 → 99284",
-      },
-      {
-        id: 3,
-        title: "Duplicate charge",
-        severity: "medium",
-        tone: "blue",
-        amount: 930,
-        confidence: "91% confidence",
-        desc: "The metabolic panel (CPT 80048) was billed twice (qty 2) on the same date for the same patient. The second charge is a duplicate.",
-        whatHappened: "Lab panel billed twice on the same visit",
-        howToFix: "Request removal of the duplicate line item from the bill.",
-        evidence: "Two identical 80048 line items on the same date of service.",
-        code: "80048 ×2",
-      },
-    ],
-    actions: [
-      { id: "a1", done: true, title: "Request itemized bill", sub: "Ask St. Mary's for a full itemized statement", deadline: "Done", tone: "safe" },
-      { id: "a2", done: false, title: "Call provider billing office", sub: "Ask them to correct the unbundled codes", deadline: "3 days", tone: "warn" },
-      { id: "a3", done: false, title: "Draft & file internal appeal", sub: "Internal appeal to BlueCross Shield TX", deadline: "14 days", tone: "urgent" },
-      { id: "a4", done: false, title: "File external review", sub: "Independent review if internal appeal is denied", deadline: "Est. 30 days", tone: "safe" },
-    ],
-    deadlineText: "14 days to appeal deadline",
-    strategies: [
-      { id: "unbundling", title: "Unbundling correction", desc: "Codes were billed separately when they should be one. Strongest angle with " + "84" + "% success." },
-      { id: "upcoding", title: "Upcoding dispute", desc: "Documentation supports a lower code. Cite the chart review." },
-      { id: "duplicate", title: "Duplicate charge removal", desc: "The same lab was billed twice. Request a credit." },
-    ],
-    appealFacts: [
-      "<strong>Strong precedent:</strong> 78% of similar unbundling cases were overturned in your state.",
-      "<strong>Deadline:</strong> You have <strong>14 days</strong> left to file an internal appeal.",
-      "<strong>Draft ready:</strong> Your appeal letter is pre-written and ready to edit.",
-    ],
-    ascNote: "Based on 1,240 similar cases in your state.",
-    ascFacts: [
-      "Unbundling is a strong appeal angle",
-      "Your state overturned 78% of similar cases",
-      "Deadline: 14 days remaining",
-    ],
-    timeline: [
-      { title: "Bill uploaded", date: "Today", desc: "Your ER bill was analyzed by Vitta.", state: "done" },
-      { title: "Request itemized bill", date: "Today", desc: "Ask St. Mary's for a full itemized statement.", state: "done" },
-      { title: "Call provider billing office", date: "In 3 days", desc: "Ask them to correct the unbundled codes.", state: "current" },
-      { title: "File internal appeal", date: "In 14 days", desc: "Send appeal to BlueCross Shield TX.", state: "pending" },
-      { title: "External review", date: "If needed", desc: "Independent review if internal appeal is denied.", state: "pending" },
-    ],
-    plainSummary:
-      "You were billed $7,842.50 for an emergency room visit on January 22. Based on 40 million similar claims, a fair price for this level of care is between $3,100 and $4,200. Vitta found 3 likely billing errors — unbundled codes, possible upcoding, and a duplicate lab charge — totaling an estimated $2,940 in overcharges. Your appeal success chance is 84%, and you have 14 days left to file an internal appeal.",
-  };
-
-  /* -------- Sample variants (surgery & EOB) reuse the ER structure with tweaks -------- */
-
-  const SAMPLE_SURGERY = {
-    ...SAMPLE_ER,
-    id: "surgery",
-    name: "Outpatient surgery",
-    provider: "Lakeside Surgery Center",
-    insurer: "UnitedHealth PPO",
-    claim: "2026-1193",
-    serviceDate: "Feb 3, 2026",
-    totalBilled: 12480.0,
-    fairLow: 6900,
-    fairHigh: 8200,
-    overcharge: 4210,
-    successChance: 71,
-    lineItems: [
-      { date: "02/03/26", code: "29881", desc: "Arthroscopy, knee, medial meniscectomy", qty: 1, amount: 3850.0, issue: null },
-      { date: "02/03/26", code: "G0463", desc: "Hospital outpatient clinic visit", qty: 1, amount: 640.0, issue: null },
-      { date: "02/03/26", code: "A4550", desc: "Surgical tray (inflated)", qty: 1, amount: 980.0, issue: 1 },
-      { date: "02/03/26", code: "J7326", desc: "Hyaluronan injection (out of network)", qty: 1, amount: 2100.0, issue: 2 },
-      { date: "02/03/26", code: "99213", desc: "Office visit, level 3", qty: 1, amount: 320.0, issue: null },
-      { date: "02/03/26", code: "73562", desc: "X-ray, knee, 3 views", qty: 1, amount: 410.0, issue: null },
-      { date: "02/03/26", code: "J2001", desc: "Lidocaine injection", qty: 2, amount: 180.0, issue: null },
-      { date: "02/03/26", code: "A0428", desc: "Facility fee (inflated)", qty: 1, amount: 4000.0, issue: 3 },
-    ],
-    issues: [
-      {
-        id: 1,
-        title: "Inflated supply charge",
-        severity: "high",
-        tone: "red",
-        amount: 640,
-        confidence: "89% confidence",
-        desc: "The surgical tray (A4550) was billed at $980 — the fair price for this item is typically $340 or less.",
-        whatHappened: "Surgical tray billed well above market rate",
-        howToFix: "Request the facility re-price the supply charge to the market rate.",
-        evidence: "Fair price data: A4550 median cost is $340.",
-        code: "A4550",
-      },
-      {
-        id: 2,
-        title: "Out-of-network surprise",
-        severity: "medium",
-        tone: "amber",
-        amount: 2100,
-        confidence: "93% confidence",
-        desc: "An out-of-network provider administered the hyaluronan injection at an in-network facility. This may be protected under the No Surprises Act.",
-        whatHappened: "Out-of-network provider at in-network facility",
-        howToFix: "Dispute balance bill citing the No Surprises Act; you should pay only the in-network cost-share.",
-        evidence: "No Surprises Act §2799B-2 protects against surprise out-of-network billing.",
-        code: "J7326",
-      },
-      {
-        id: 3,
-        title: "Facility fee inflated",
-        severity: "medium",
-        tone: "blue",
-        amount: 1470,
-        confidence: "82% confidence",
-        desc: "The facility fee of $4,000 is well above the fair range for this outpatient procedure ($2,300–$2,800).",
-        whatHappened: "Facility fee above fair market range",
-        howToFix: "Negotiate the facility fee using the fair-price comparison.",
-        evidence: "Similar outpatient arthroscopy facility fees average $2,500.",
-        code: "Facility fee",
-      },
-    ],
-    actions: [
-      { id: "a1", done: true, title: "Request itemized bill", sub: "Ask Lakeside for a full itemized statement", deadline: "Done", tone: "safe" },
-      { id: "a2", done: false, title: "Dispute balance bill (No Surprises Act)", sub: "File dispute with your insurer", deadline: "7 days", tone: "warn" },
-      { id: "a3", done: false, title: "Negotiate facility fee", sub: "Use fair-price comparison talking points", deadline: "10 days", tone: "warn" },
-      { id: "a4", done: false, title: "Draft & file internal appeal", sub: "Internal appeal to UnitedHealth PPO", deadline: "21 days", tone: "safe" },
-    ],
-    deadlineText: "21 days to appeal deadline",
-    strategies: [
-      { id: "supply", title: "Inflated supply charge", desc: "Surgical tray was billed at $980 vs. a market rate of ~$340. Strongest angle with " + "71" + "% success." },
-      { id: "surprise", title: "No Surprises Act dispute", desc: "Out-of-network provider at an in-network facility. Cite the statute." },
-      { id: "facility", title: "Facility fee negotiation", desc: "Compare the $4,000 fee against the fair range and negotiate down." },
-    ],
-    appealFacts: [
-      "<strong>Strong precedent:</strong> 72% of similar balance-billing disputes were overturned in your state.",
-      "<strong>Deadline:</strong> You have <strong>7 days</strong> to file a No Surprises Act dispute.",
-      "<strong>Draft ready:</strong> Your negotiation script is pre-written and ready to use.",
-    ],
-    ascNote: "Based on 980 similar cases in your state.",
-    ascFacts: [
-      "No Surprises Act is a strong appeal angle",
-      "Your state overturned 72% of similar disputes",
-      "Deadline: 7 days to file dispute",
-    ],
-    timeline: [
-      { title: "Bill uploaded", date: "Today", desc: "Your surgery bill was analyzed by Vitta.", state: "done" },
-      { title: "Request itemized bill", date: "Today", desc: "Ask Lakeside for a full itemized statement.", state: "done" },
-      { title: "Dispute balance bill", date: "In 7 days", desc: "File a No Surprises Act dispute.", state: "current" },
-      { title: "Negotiate facility fee", date: "In 10 days", desc: "Use fair-price talking points.", state: "pending" },
-      { title: "File internal appeal", date: "In 21 days", desc: "Send appeal to UnitedHealth PPO.", state: "pending" },
-    ],
-    plainSummary:
-      "You were billed $12,480 for outpatient knee surgery on February 3. The fair price for this procedure is between $6,900 and $8,200. Vitta found 3 issues — an inflated supply charge, an out-of-network surprise covered by the No Surprises Act, and an inflated facility fee — totaling an estimated $4,210 in overcharges. Your appeal success chance is 71%.",
-  };
-
-  const SAMPLE_EOB = {
-    ...SAMPLE_ER,
-    id: "eob",
-    name: "Denied EOB",
-    provider: "Dr. Elena Marsh, MD",
-    insurer: "Aetna HMO",
-    claim: "2026-5527",
-    serviceDate: "Feb 18, 2026",
-    totalBilled: 2950.0,
-    fairLow: 1800,
-    fairHigh: 2300,
-    overcharge: 0, // denial focus
-    successChance: 68,
-    lineItems: [
-      { date: "02/18/26", code: "99214", desc: "Office visit, level 4", qty: 1, amount: 420.0, issue: null },
-      { date: "02/18/26", code: "J0597", desc: "Cytokine inhibitor (denied)", qty: 1, amount: 2530.0, issue: 1 },
-    ],
-    issues: [
-      {
-        id: 1,
-        title: "Claim denied: 'Not medically necessary'",
-        severity: "high",
-        tone: "red",
-        amount: 2530,
-        confidence: "Denial reason",
-        desc: "Your insurer denied coverage for the cytokine inhibitor (J0597), claiming it is not medically necessary. Your provider certified it as medically necessary.",
-        whatHappened: "Claim denied as 'not medically necessary'",
-        howToFix: "File an internal appeal with a letter of medical necessity from your provider.",
-        evidence: "Provider certification + clinical documentation attached.",
-        code: "J0597",
-      },
-    ],
-    actions: [
-      { id: "a1", done: true, title: "Review denial reason", sub: "Identified as 'not medically necessary'", deadline: "Done", tone: "safe" },
-      { id: "a2", done: false, title: "Get letter of medical necessity", sub: "Ask Dr. Marsh for a supporting letter", deadline: "5 days", tone: "warn" },
-      { id: "a3", done: false, title: "File internal appeal", sub: "Internal appeal to Aetna HMO", deadline: "18 days", tone: "urgent" },
-      { id: "a4", done: false, title: "Request external review", sub: "If internal appeal is denied", deadline: "Est. 45 days", tone: "safe" },
-    ],
-    deadlineText: "18 days to appeal deadline",
-    strategies: [
-      { id: "necessity", title: "Letter of medical necessity", desc: "Your provider certified the drug as medically necessary — a strong rebuttal." },
-      { id: "policy", title: "Use Your state's external review", desc: "If internal appeal is denied, request an independent external review." },
-      { id: "documentation", title: "Cite clinical documentation", desc: "Attach provider notes and treatment history to support the appeal." },
-    ],
-    appealFacts: [
-      "<strong>Provider support:</strong> Your provider certified the procedure as medically necessary.",
-      "<strong>Deadline:</strong> You have <strong>18 days</strong> left to file an internal appeal.",
-      "<strong>Letter ready:</strong> A draft appeal with the medical-necessity argument is ready to edit.",
-    ],
-    ascNote: "Based on 760 similar medical-necessity denials in your state.",
-    ascFacts: [
-      "Medical necessity is a strong appeal angle",
-      "Provider certification supports your case",
-      "Deadline: 18 days remaining",
-    ],
-    timeline: [
-      { title: "EOB uploaded", date: "Today", desc: "Your Explanation of Benefits was analyzed.", state: "done" },
-      { title: "Review denial reason", date: "Today", desc: "Denial identified as 'not medically necessary'.", state: "done" },
-      { title: "Get letter of medical necessity", date: "In 5 days", desc: "Ask Dr. Marsh for a supporting letter.", state: "current" },
-      { title: "File internal appeal", date: "In 18 days", desc: "Send appeal to Aetna HMO.", state: "pending" },
-      { title: "External review", date: "If needed", desc: "Independent review if internal appeal is denied.", state: "pending" },
-    ],
-    plainSummary:
-      "Your insurer denied a $2,530 injection benefit, saying it was 'not medically necessary.' Your provider certified it as medically necessary, which gives you a strong basis to appeal. Vitta estimates your appeal success chance at 68%. You have 18 days to file an internal appeal.",
-  };
-
-  const SAMPLES = {
-    er: SAMPLE_ER,
-    surgery: SAMPLE_SURGERY,
-    eob: SAMPLE_EOB,
-  };
-
-  /* -------- Glossary -------- */
-  const GLOSSARY = [
-    { code: "99283", type: "CPT", meaning: "Emergency department visit, level 3 — a moderate-complexity ER visit." },
-    { code: "99284", type: "CPT", meaning: "Emergency department visit, level 4 — a high-complexity ER visit." },
-    { code: "99285", type: "CPT", meaning: "Emergency department visit, level 5 — the highest-complexity ER visit." },
-    { code: "99213", type: "CPT", meaning: "Office visit, level 3 — a typical established patient visit." },
-    { code: "99214", type: "CPT", meaning: "Office visit, level 4 — a more complex established patient visit." },
-    { code: "93005", type: "CPT", meaning: "Electrocardiogram (ECG/EKG), routine tracing only." },
-    { code: "80048", type: "CPT", meaning: "Basic metabolic panel — a set of 8 common blood chemistry tests." },
-    { code: "81003", type: "CPT", meaning: "Urinalysis, automated — a routine urine test." },
-    { code: "29881", type: "CPT", meaning: "Knee arthroscopy with partial meniscectomy — keyhole knee surgery." },
-    { code: "73562", type: "CPT", meaning: "X-ray of the knee, 3 views." },
-    { code: "J1200", type: "HCPCS", meaning: "Dexamethasone injection — an anti-inflammatory steroid." },
-    { code: "J0202", type: "HCPCS", meaning: "Alteplase — a clot-busting medication for blood clots." },
-    { code: "J7326", type: "HCPCS", meaning: "Hyaluronan injection — a joint lubricant for knee arthritis." },
-    { code: "A0428", type: "HCPCS", meaning: "Ambulance service, basic life support (BLS), non-emergency." },
-    { code: "A4550", type: "HCPCS", meaning: "Surgical tray — the sterile supplies used during a procedure." },
-    { code: "G0463", type: "HCPCS", meaning: "Hospital outpatient clinic visit for evaluation and management." },
-    { code: "99221", type: "CPT", meaning: "Initial hospital inpatient care, low complexity." },
-    { code: "Z00.00", type: "ICD-10", meaning: "General adult medical examination without abnormal findings." },
-    { code: "E11.9", type: "ICD-10", meaning: "Type 2 diabetes mellitus without complications." },
-    { code: "I10", type: "ICD-10", meaning: "Essential (primary) hypertension." },
-    { code: "Upcoding", type: "Term", meaning: "Billing a more expensive code than the care actually provided." },
-    { code: "Unbundling", type: "Term", meaning: "Billing separate codes for services that should be billed as one." },
-    { code: "Balance billing", type: "Term", meaning: "Billing you for the difference between the provider's charge and what insurance paid." },
-    { code: "EOB", type: "Term", meaning: "Explanation of Benefits — the statement from your insurer showing what was covered." },
-    { code: "Deductible", type: "Term", meaning: "The amount you pay out of pocket before your insurance starts paying." },
-    { code: "Coinsurance", type: "Term", meaning: "Your share of covered costs after the deductible, usually a percentage." },
-    { code: "Copay", type: "Term", meaning: "A fixed amount you pay for a covered service." },
-    { code: "No Surprises Act", type: "Term", meaning: "A federal law protecting you from most surprise out-of-network bills for emergency care and at in-network facilities." },
-  ];
+  const api = window.VittaAPI.create();
 
   /* ==========================================================
      STATE
      ========================================================== */
 
-  let currentData = null;
-  let currentIssueFilter = "all";
+  let state = {
+    jobId: null,
+    documentId: null,
+    bill: null,          // ParsedBill
+    flags: null,         // FlagSet
+    flagSetComplete: false,
+    score: null,         // AppealScore
+    scoreComplete: false,
+    pipelineStatus: null,
+    currentIssueFilter: "all",
+    currentPage: 1,
+    highlightedBBox: null,
+    activeLineItemId: null,
+    uploadPending: false,
+    lastUpload: null,    // { file, sampleKey }
+    uploadErrorShown: false
+  };
+
+  let currentData = null; // derived view model (for actions/strategies/timeline)
 
   /* ==========================================================
      HELPERS
      ========================================================== */
 
   const $ = (sel) => document.querySelector(sel);
-  const money = (n) => "$" + n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-  const money0 = (n) => "$" + n.toLocaleString("en-US", { maximumFractionDigits: 0 });
+  const money = (n) =>
+    n == null ? "—" : "$" + Number(n).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  const money0 = (n) =>
+    n == null ? "—" : "$" + Number(n).toLocaleString("en-US", { maximumFractionDigits: 0 });
+  const pct = (n) => (n == null ? "—" : Math.round(n * 100) + "%");
+  const A = () => String.fromCharCode(38); // "&" — built at runtime to survive entity decoding
+  const esc = (s) => String(s == null ? "" : s).replace(/[&<>"']/g, (c) => {
+    if (c === "&") return A() + "amp;";
+    if (c === "<") return A() + "lt;";
+    if (c === ">") return A() + "gt;";
+    if (c === '"') return A() + "quot;";
+    return A() + "#39;";
+  });
 
   const ICONS = {
     alert: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 9v4M12 17h.01"/><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/></svg>',
-    up: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l9 16H3l9-16z"/><path d="M12 10v4M12 17h.01"/></svg>',
-    clock: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 3"/></svg>',
     check: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>',
-    doc: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/></svg>',
-    shield: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l7 4v5c0 4.6-3 7.6-7 9-4-1.4-7-4.4-7-9V7l7-4z"/><path d="M9 12l2 2 4-4.5"/></svg>',
+    clock: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 3"/></svg>',
+    warn: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l9 16H3l9-16z"/><path d="M12 10v4M12 17h.01"/></svg>',
+    doc: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/><path d="M16 13H8M16 17H8M10 9H8"/></svg>',
+    dup: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect x="8" y="8" width="13" height="13" rx="2"/><path d="M4 16V5a1 1 0 0 1 1-1h11"/></svg>',
+    unbin: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7v10l4-5-4-5zM21 7v10l-4-5 4-5z"/></svg>',
+    math: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h16l-8 8 8 8H4"/></svg>',
+    code: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>',
+    surge: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 9A6 6 0 0 0 6 9c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>',
+    price: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>',
+    up: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l9 16H3l9-16z"/><path d="M12 10v4M12 17h.01"/></svg>',
+    denied: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18M6 6l12 12"/></svg>',
+    auth: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>',
+    gap: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>'
   };
 
-  const TONE_CLASS = { red: "tone-red", amber: "tone-amber", blue: "tone-blue", teal: "tone-teal" };
+  const CATEGORY_META = {
+    duplicate_charge: { label: "Duplicate charge", icon: ICONS.dup, tone: "red" },
+    unbundling: { label: "Unbundling", icon: ICONS.unbin, tone: "red" },
+    arithmetic_mismatch: { label: "Arithmetic mismatch", icon: ICONS.math, tone: "amber" },
+    invalid_deprecated_code: { label: "Invalid / deprecated code", icon: ICONS.code, tone: "red" },
+    surprise_billing: { label: "Surprise billing", icon: ICONS.surge, tone: "amber" },
+    pricing_anomaly: { label: "Pricing anomaly", icon: ICONS.price, tone: "blue" },
+    upcoding: { label: "Upcoding", icon: ICONS.up, tone: "amber" },
+    denied_claim: { label: "Denied claim", icon: ICONS.denied, tone: "red" },
+    missing_authorization: { label: "Missing authorization", icon: ICONS.auth, tone: "amber" },
+    coverage_gap: { label: "Coverage gap", icon: ICONS.gap, tone: "blue" }
+  };
+
   const SEV_ICON = { high: ICONS.alert, medium: ICONS.up, low: ICONS.clock };
+  const SEV_CLASS = { high: "sev-high", medium: "sev-medium", low: "sev-low" };
 
   /* ==========================================================
      NAVIGATION
@@ -346,18 +97,31 @@
 
   const PAGE_META = {
     welcome: { title: "Welcome back, Alex", sub: "Let's find out if your bill is correct." },
-    scan: { title: "Analyzing your bill", sub: "Vitta is extracting every line item, code, and amount." },
+    scan: { title: "Analyzing your bill", sub: "Pipeline stages run independently — results stream in as they land." },
     overview: { title: "Claim overview", sub: "Everything Vitta found on your bill, at a glance." },
-    bill: { title: "Bill detail", sub: "Every line item, decoded and explained in plain language." },
-    issues: { title: "Issues found", sub: "Potential billing errors and overcharges detected by Vitta's AI." },
-    appeal: { title: "Appeal center", sub: "Your success score, strategy, and a ready-to-edit appeal letter." },
+    bill: { title: "Bill detail", sub: "Every line item with per-field verification and source-document provenance." },
+    issues: { title: "Issues found", sub: "Rule-based facts and ML-flagged anomalies, with explanations." },
+    appeal: { title: "Appeal center", sub: "Calibrated success probability, factor breakdown, and a ready-to-edit appeal letter." },
     actions: { title: "Action tracker", sub: "Your step-by-step plan with deadlines and document templates." },
-    glossary: { title: "Code glossary", sub: "Common medical codes, translated into plain English." },
-    settings: { title: "Settings", sub: "Manage your account, privacy, and preferences." },
+    glossary: { title: "Code glossary", sub: "Pulled live from AMA/CMS-validated reference data." },
+    settings: { title: "Settings", sub: "Manage your account, privacy, and preferences." }
   };
 
-  function showPage(page) {
+  function showPage(page, opts) {
     if (!PAGE_META[page]) return;
+    if (["overview", "bill", "issues", "appeal", "actions"].includes(page) && !state.bill) {
+      showToast("Analyze a bill first to see this view.");
+      return;
+    }
+    // Reset any page-local selection state
+    if (page === "bill" && opts && opts.lineItemId) {
+      state.activeLineItemId = opts.lineItemId;
+    } else if (page !== "bill") {
+      state.activeLineItemId = null;
+    }
+    if (opts && opts.page) state.currentPage = opts.page;
+    if (opts && opts.bbox) state.highlightedBBox = opts.bbox;
+
     document.querySelectorAll(".page-section").forEach((s) => s.classList.remove("active"));
     const target = $("#page-" + page);
     if (target) target.classList.add("active");
@@ -366,227 +130,955 @@
     });
     $("#topbarTitle").textContent = PAGE_META[page].title;
     $("#topbarSub").textContent = PAGE_META[page].sub;
+
+    if (page === "bill") renderDocViewer();
+    if (page === "overview") renderOverview();
+    if (page === "issues") renderIssuesList();
+    if (page === "appeal") renderAppealMeta();
+    if (page === "glossary" && opts && opts.code) openGlossaryDetail(opts.code);
+
     window.scrollTo({ top: 0, behavior: "smooth" });
   }
 
   document.querySelectorAll(".nav-item").forEach((item) => {
     item.addEventListener("click", () => {
       const page = item.dataset.page;
-      if ((page === "overview" || page === "bill" || page === "issues" || page === "appeal" || page === "actions") && !currentData) {
-        showToast("Analyze a bill first to see this view.");
-        return;
-      }
       showPage(page);
     });
   });
 
   /* ==========================================================
-     SCAN WIZARD
+     UPLOAD FLOW
      ========================================================== */
 
-  function startScan(sampleKey) {
-    currentData = SAMPLES[sampleKey] || SAMPLE_ER;
-    showPage("scan");
+  const uploadZone = $("#uploadZone");
+  const fileInput = $("#fileInput");
+  const cameraInput = $("#cameraInput");
 
-    const fill = $("#scanRingFill");
-    const pct = $("#scanPct");
-    const steps = [1, 2, 3, 4, 5].map((i) => $("#scanStep" + i));
+  function triggerUpload() {
+    if (state.uploadPending) {
+      showToast("An analysis is already running.");
+      return;
+    }
+    fileInput.click();
+  }
+
+  uploadZone.addEventListener("click", triggerUpload);
+  uploadZone.addEventListener("keydown", (e) => {
+    if (e.key === "Enter" || e.key === " ") { e.preventDefault(); triggerUpload(); }
+  });
+  $("#heroUploadBtn").addEventListener("click", (e) => { e.preventDefault(); triggerUpload(); });
+
+  ["dragenter", "dragover"].forEach((evt) => {
+    uploadZone.addEventListener(evt, (e) => { e.preventDefault(); uploadZone.classList.add("dragover"); });
+  });
+  ["dragleave", "drop"].forEach((evt) => {
+    uploadZone.addEventListener(evt, (e) => { e.preventDefault(); uploadZone.classList.remove("dragover"); });
+  });
+  uploadZone.addEventListener("drop", (e) => {
+    if (e.dataTransfer.files.length) startUpload(e.dataTransfer.files[0]);
+  });
+
+  fileInput.addEventListener("change", () => {
+    if (fileInput.files.length) startUpload(fileInput.files[0]);
+    fileInput.value = "";
+  });
+
+  // Phone camera capture
+  $("#cameraBtn").addEventListener("click", (e) => {
+    e.preventDefault();
+    if (state.uploadPending) { showToast("An analysis is already running."); return; }
+    if (!("capture" in document.createElement("input"))) {
+      // Fallback: open file picker
+      fileInput.click();
+      return;
+    }
+    cameraInput.click();
+  });
+  cameraInput.addEventListener("change", () => {
+    if (cameraInput.files.length) startUpload(cameraInput.files[0]);
+    cameraInput.value = "";
+  });
+
+  // Sample cards
+  document.querySelectorAll(".sample-card").forEach((card) => {
+    card.addEventListener("click", () => {
+      const key = card.dataset.sample;
+      const fakeFile = key === "clean"
+        ? new File([""], "clean-bill.pdf", { type: "application/pdf" })
+        : new File([""], "sample-bill.pdf", { type: "application/pdf" });
+      startUpload(fakeFile, key);
+    });
+  });
+
+  // Upload retry
+  $("#uploadErrorRetry").addEventListener("click", () => {
+    hideUploadError();
+    if (state.lastUpload) {
+      startUpload(state.lastUpload.file, state.lastUpload.sampleKey);
+    } else {
+      triggerUpload();
+    }
+  });
+
+  function showUploadError(code, message) {
+    state.uploadErrorShown = true;
+    const titles = {
+      UNSUPPORTED_FILE_TYPE: "Unsupported file type",
+      PAGE_LIMIT_EXCEEDED: "Page limit exceeded",
+      NETWORK: "Network error"
+    };
+    $("#uploadErrorTitle").textContent = titles[code] || "Upload failed";
+    $("#uploadErrorMsg").textContent = message || "Please try again.";
+    $("#uploadError").hidden = false;
+  }
+  function hideUploadError() {
+    state.uploadErrorShown = false;
+    $("#uploadError").hidden = true;
+  }
+
+  const PIPELINE_TIMEOUT_MS = 120000; // 2 min — long multi-service pipelines can be slow
+
+  function startUpload(file, sampleKey) {
+    hideUploadError();
+    state.uploadPending = true;
+    state.lastUpload = { file, sampleKey };
+    state.jobId = null;
+    state.documentId = null;
+    state.bill = null;
+    state.flags = null;
+    state.flagSetComplete = false;
+    state.score = null;
+    state.scoreComplete = false;
+    state.pipelineStatus = null;
+
+    // Clear any previous pipeline timeout
+    if (state._pipelineTimer) {
+      clearTimeout(state._pipelineTimer);
+      state._pipelineTimer = null;
+    }
+
+    const pctEl = $("#scanPct");
+    const ringFill = $("#scanRingFill");
     const CIRC = 103.67;
 
-    // Reset
-    steps.forEach((s) => { s.classList.remove("done", "active"); });
-    fill.style.strokeDashoffset = CIRC;
-    pct.textContent = "0%";
+    // Reset scan UI
+    pctEl.textContent = "0%";
+    ringFill.style.strokeDashoffset = CIRC;
+    $("#scanPhaseLabel").textContent = "uploading";
+    $("#scanTitle").textContent = "Uploading your bill…";
+    $("#pipelineError").hidden = true;
+    $("#viewPartialResultsBtn").hidden = true;
+    document.querySelectorAll(".scan-step").forEach((s) => {
+      s.classList.remove("done", "active", "failed");
+      const st = s.querySelector("[data-status]");
+      if (st) { st.textContent = ""; st.className = "stage-status"; }
+    });
 
-    let progress = 0;
-    const tick = () => {
-      progress += Math.random() * 9 + 5;
-      if (progress > 100) progress = 100;
-      const offset = CIRC - (CIRC * progress) / 100;
-      fill.style.strokeDashoffset = offset;
-      pct.textContent = Math.round(progress) + "%";
+    showPage("scan");
 
-      steps.forEach((s, idx) => {
-        const stepStart = (idx / steps.length) * 100;
-        const stepEnd = ((idx + 1) / steps.length) * 100;
-        s.classList.remove("done", "active");
-        if (progress >= stepEnd) s.classList.add("done");
-        else if (progress >= stepStart) s.classList.add("active");
+    api.upload(file)
+      .then((resp) => {
+        state.jobId = resp.jobId;
+        state.documentId = resp.documentId;
+        // Subscribe to pipeline updates (real backend: WS /ws/jobs/{id})
+        api.onJobUpdate(resp.jobId, onPipelineUpdate);
+
+        // Timeout guard — if the pipeline stalls, surface a recoverable error
+        state._pipelineTimer = setTimeout(() => {
+          if (state.uploadPending && state.jobId === resp.jobId) {
+            state.uploadPending = false;
+            $("#pipelineErrorTitle").textContent = "Pipeline timed out";
+            $("#pipelineErrorMsg").textContent = "The analysis is taking longer than expected. Your document is safe — you can retry or upload a different file.";
+            $("#pipelineError").hidden = false;
+            $("#scanTitle").textContent = "Analysis timed out";
+          }
+        }, PIPELINE_TIMEOUT_MS);
+      })
+      .catch((err) => {
+        state.uploadPending = false;
+        // Upload-time failure (unsupported type, page limit)
+        if (err && err.code) {
+          // Exit scan view back to welcome with inline error
+          document.querySelectorAll(".page-section").forEach((s) => s.classList.remove("active"));
+          $("#page-welcome").classList.add("active");
+          showUploadError(err.code, err.message);
+          // reset nav
+          document.querySelectorAll(".nav-item").forEach((n) => n.classList.toggle("active", n.dataset.page === "welcome"));
+          $("#topbarTitle").textContent = PAGE_META.welcome.title;
+          $("#topbarSub").textContent = PAGE_META.welcome.sub;
+        } else {
+          showUploadError("NETWORK", "Could not reach the pipeline service. Please check your connection and try again.");
+        }
       });
-
-      if (progress < 100) {
-        setTimeout(tick, 260 + Math.random() * 220);
-      } else {
-        setTimeout(() => {
-          steps.forEach((s) => s.classList.add("done"));
-          renderAll();
-          showPage("overview");
-          showToast("Analysis complete — " + currentData.issues.length + " issues found.");
-        }, 450);
-      }
-    };
-    setTimeout(tick, 400);
   }
 
   /* ==========================================================
-     RENDERERS
+     PIPELINE STATUS HANDLER
+     ========================================================== */
+
+  function onPipelineUpdate(status) {
+    state.pipelineStatus = status;
+    const CIRC = 103.67;
+
+    // Update ring + phase label
+    $("#scanPct").textContent = Math.round(status.progress) + "%";
+    $("#scanRingFill").style.strokeDashoffset = CIRC - (CIRC * status.progress) / 100;
+
+    const phaseLabels = {
+      uploading: "uploading",
+      preprocessing: "preprocessing",
+      ocr_running: "OCR",
+      extraction_running: "extracting",
+      validation_running: "validating",
+      ml_scoring_running: "scoring",
+      done: "done",
+      failed: "failed"
+    };
+    $("#scanPhaseLabel").textContent = phaseLabels[status.status] || status.status;
+
+    // Update stage list
+    status.stages.forEach((stage) => {
+      const row = document.querySelector(`.scan-step[data-stage="${stage.name}"]`);
+      if (!row) return;
+      row.classList.remove("done", "active", "failed");
+      const statusEl = row.querySelector("[data-status]");
+      if (stage.status === "done") {
+        row.classList.add("done");
+        if (statusEl) { statusEl.textContent = "Complete"; statusEl.className = "stage-status done"; }
+      } else if (stage.status === "running") {
+        row.classList.add("active");
+        if (statusEl) { statusEl.textContent = "Running…"; statusEl.className = "stage-status running"; }
+      } else if (stage.status === "failed") {
+        row.classList.add("failed");
+        if (statusEl) { statusEl.textContent = "Failed"; statusEl.className = "stage-status failed"; }
+      }
+    });
+
+    // Headline copy
+    const stageTitles = {
+      preprocessing: "Preprocessing your document…",
+      ocr_running: "Running OCR — reading text and layout…",
+      extraction_running: "Extracting line items…",
+      validation_running: "Validating codes and arithmetic…",
+      ml_scoring_running: "Scoring with ML anomaly detection…",
+      done: "Analysis complete"
+    };
+    if (stageTitles[status.status]) {
+      $("#scanTitle").textContent = stageTitles[status.status];
+    }
+
+    // Progress sub-copy reflects partial results
+    const partialNotes = [];
+    if (status.partialBill && status.partialBill.lineItems && status.partialBill.lineItems.length) {
+      partialNotes.push("bill detail ready");
+    }
+    if (status.partialFlags && status.partialFlags.flags.length) {
+      partialNotes.push("rule flags ready");
+    }
+    if (status.partialScore) {
+      partialNotes.push("appeal score ready");
+    }
+    if (partialNotes.length) {
+      $("#scanSub").innerHTML = "Partial results live: <strong>" + partialNotes.join(", ") + "</strong>. Remaining stages still running in the background.";
+    } else {
+      $("#scanSub").textContent = "The pipeline runs multiple AI services. Stages complete independently — results stream in as they land.";
+    }
+
+    // Failure state
+    if (status.status === "failed" && status.failure) {
+      $("#pipelineErrorTitle").textContent = "Pipeline failed — " + (status.failure.code || "error");
+      $("#pipelineErrorMsg").textContent = status.failure.message || "An unknown error occurred.";
+      $("#pipelineError").hidden = false;
+      $("#scanTitle").textContent = "Analysis failed";
+      state.uploadPending = false;
+      return;
+    }
+
+    // Success
+    if (status.status === "done") {
+      state.uploadPending = false;
+      // Use the final payloads
+      if (status.partialBill) state.bill = status.partialBill;
+      if (status.partialFlags) {
+        state.flags = status.partialFlags;
+        state.flagSetComplete = !!status.partialFlags.complete;
+      }
+      if (status.partialScore) {
+        state.score = status.partialScore;
+        state.scoreComplete = true;
+      }
+      finalizeAnalysis();
+      return;
+    }
+
+    // Partial results — stream them in as they land
+    if (status.partial) {
+      if (status.partialBill && !status.partialBill.lineItems.length) {
+        // Bill header/metadata available but no line items yet — show skeleton on overview
+        state.bill = status.partialBill;
+      }
+      if (status.partialBill && status.partialBill.lineItems && status.partialBill.lineItems.length) {
+        state.bill = status.partialBill;
+      }
+      if (status.partialFlags) {
+        state.flags = status.partialFlags;
+        state.flagSetComplete = !!status.partialFlags.complete;
+      }
+      if (status.partialScore) {
+        state.score = status.partialScore;
+        state.scoreComplete = false; // score object arrived but pipeline still running
+      }
+      // Show the "view partial results" button once bill has line items
+      if (state.bill && state.bill.lineItems && state.bill.lineItems.length) {
+        $("#viewPartialResultsBtn").hidden = false;
+      }
+      if (state.flags && state.flags.flags.length) {
+        $("#viewPartialResultsBtn").hidden = false;
+      }
+    }
+
+    // Auto-advance to overview once bill is fully extracted AND pipeline still running
+    // (keeps user engaged; they can click "view partial results" too)
+  }
+
+  $("#viewPartialResultsBtn").addEventListener("click", () => {
+    // Ensure bill data is fetched fully
+    if (state.bill && state.bill.lineItems && state.bill.lineItems.length) {
+      buildDerivedModel();
+      showPage("overview");
+      showToast("Showing partial results — remaining stages still running.");
+    } else {
+      showToast("Bill details aren't ready yet — waiting for extraction stage…");
+    }
+  });
+
+  $("#pipelineRetryBtn").addEventListener("click", () => {
+    if (state.lastUpload) {
+      startUpload(state.lastUpload.file, state.lastUpload.sampleKey);
+    }
+  });
+
+  $("#pipelineCancelBtn").addEventListener("click", () => {
+    state.uploadPending = false;
+    showPage("welcome");
+  });
+
+  /* ==========================================================
+     FINALIZE + DERIVED MODEL
+     ========================================================== */
+
+  function finalizeAnalysis() {
+    // Ensure we have the full bill
+    if (!state.bill || !state.bill.lineItems || !state.bill.lineItems.length) {
+      api.getBill(state.documentId).then((bill) => {
+        state.bill = bill;
+        buildDerivedModel();
+        showPage("overview");
+        showToast("Analysis complete — " + (state.flags ? state.flags.flags.length : 0) + " issues found.");
+      });
+      return;
+    }
+    buildDerivedModel();
+    showPage("overview");
+    showToast("Analysis complete — " + (state.flags ? state.flags.flags.length : 0) + " issues found.");
+  }
+
+  function buildDerivedModel() {
+    const b = state.bill;
+    if (!b) return false;
+
+    const isClean = !state.flags || !state.flags.flags || state.flags.flags.length === 0;
+    const flags = state.flags && state.flags.flags ? state.flags.flags : [];
+    const totalFlagged = flags.reduce((acc, f) => acc + (f.flagAmount || 0), 0);
+    const flaggedIds = new Set();
+    flags.forEach((f) => (f.lineItemIds || []).forEach((id) => flaggedIds.add(id)));
+
+    currentData = {
+      isClean,
+      provider: b.metadata.provider || "—",
+      payer: b.metadata.payer || "—",
+      claim: b.metadata.accountRef || "—",
+      serviceDate: b.metadata.statementDate || "—",
+      totalBilled: b.totals.billed,
+      overcharge: totalFlagged,
+      lineItems: b.lineItems,
+      issues: flags.map((f) => ({
+        id: f.id,
+        title: f.title,
+        severity: f.severity,
+        tone: CATEGORY_META[f.category] ? CATEGORY_META[f.category].tone : "blue",
+        amount: f.flagAmount || 0,
+        confidence: f.detectionType === "rule"
+          ? Math.round((f.confidence || 0.95) * 100) + "% confidence · rule"
+          : Math.round((f.confidence || 0.7) * 100) + "% confidence · ML anomaly",
+        desc: f.description,
+        whatHappened: f.summary,
+        howToFix: f.why && f.why.contributions && f.why.contributions.length
+          ? f.why.contributions.map((c) => c.description).join(" ")
+          : f.description,
+        evidence: f.evidence && f.evidence.source ? f.evidence.source : "",
+        evidenceCode: f.evidence && f.evidence.codeReference ? f.evidence.codeReference : "",
+        code: (f.lineItemIds || []).map((id) => {
+          const li = b.lineItems.find((l) => l.id === id);
+          return li ? li.code : "";
+        }).filter(Boolean).join(" / ") || f.title,
+        category: f.category,
+        detectionType: f.detectionType,
+        lineItemIds: f.lineItemIds || [],
+        why: f.why
+      })),
+      flagSetComplete: state.flagSetComplete,
+      scoreReady: state.scoreComplete && state.score && state.score.score != null,
+      score: state.score ? state.score.score : null,
+      scoreNote: state.score ? state.score.basis : "Score pending…",
+      scoreFactors: state.score ? state.score.factors : [],
+      scoreCI: state.score && state.score.confidenceInterval ? state.score.confidenceInterval : null,
+      scoreSample: state.score ? state.score.sampleSize : 0,
+      scoreModel: state.score ? state.score.modelVersion : null,
+      scoreCalibrated: state.score ? state.score.calibrated : false,
+      scoreCalibration: state.score && state.score.calibration ? state.score.calibration : null,
+      scoreStale: state.score ? !!state.score.stale : false,
+      patientResponsibility: b.totals.patientResponsibility,
+      reconciliation: b.totals.reconciliation,
+      pages: b.pages || [],
+      extractionWarnings: b.extractionWarnings || []
+    };
+
+    updateCounts();
+    renderAll();
+    return true;
+  }
+
+  function updateCounts() {
+    if (state.flags && state.flags.flags) {
+      $("#navIssueCount").textContent = state.flags.flags.length;
+    }
+    const remainingActions = currentData && currentData.issues ? currentData.issues.length : 0;
+    $("#navActionCount").textContent = Math.max(0, remainingActions);
+    if (currentData && currentData.scoreReady) {
+      $("#navAppealBadge").hidden = true;
+    }
+  }
+
+  /* ==========================================================
+     RENDERERS — TOP LEVEL
      ========================================================== */
 
   function renderAll() {
     if (!currentData) return;
     renderBillHeader();
+    renderReconStrip();
     renderTabCounts();
-    renderKPIs();
-    renderOverviewIssues();
-    renderOverviewActions();
+    renderOverview();
     renderLineItems();
     renderExplanations();
-    renderPlainSummary();
     renderIssuesList();
-    renderStrategies();
     renderAppealMeta();
-    renderLetter();
     renderTimeline();
     renderChecklist();
-    renderGlossary();
-    updateCounts();
+    renderWarningBanners();
+    renderDocViewer();
   }
 
-  function renderBillHeader() {
+  function renderOverview() {
+    if (!currentData) return;
     const d = currentData;
-    $("#billProvider").textContent = d.provider;
-    $("#billServiceDate").textContent = d.serviceDate;
-    $("#billClaim").textContent = d.claim;
-    $("#billInsurer").textContent = d.insurer;
-  }
 
-  function renderTabCounts() {
-    const n = currentData.lineItems.length;
-    $("#tabLineCount").textContent = n;
-    $("#tabExplainCount").textContent = n;
-  }
+    // Show real cards once we have bill; keep skeleton otherwise
+    const hasBill = state.bill && state.bill.lineItems && state.bill.lineItems.length;
+    $("#kpiSkeleton").hidden = hasBill;
+    $("#kpiGrid").hidden = !hasBill;
+    if (!hasBill) return;
 
-  function renderKPIs() {
-    const d = currentData;
     $("#kpiBilled").textContent = money(d.totalBilled);
     $("#kpiOvercharge").textContent = money0(d.overcharge);
-    $("#kpiFair").innerHTML = money0(d.fairLow) + "<small>–</small>" + money0(d.fairHigh);
-    $("#kpiChance").innerHTML = d.successChance + "<small>%</small>";
+    $("#kpiPatientResp").textContent = money0(d.patientResponsibility);
+    $("#kpiChance").innerHTML = d.scoreReady ? Math.round(d.score * 100) + "<small>%</small>" : "…";
 
     $("#kpiLineNote").textContent = "Across " + d.lineItems.length + " line items";
-    $("#kpiIssueNote").innerHTML = '<span class="trend-down">' + d.issues.length + " issues</span> found on this bill";
-    const chanceTrend = d.successChance >= 70 ? "High" : (d.successChance >= 55 ? "Moderate" : "Low");
-    const trendClass = d.successChance >= 70 ? "trend-up" : (d.successChance >= 55 ? "" : "trend-down");
-    $("#kpiChanceNote").innerHTML = '<span class="' + trendClass + '">' + chanceTrend + "</span> — " + (d.successChance >= 70 ? "strong case to appeal" : d.successChance >= 55 ? "reasonable case to appeal" : "weaker case — review carefully");
+
+    if (d.isClean) {
+      $("#kpiIssueNote").innerHTML = '<span class="trend-up">0 issues</span> — this bill looks correct';
+    } else {
+      $("#kpiIssueNote").innerHTML = '<span class="trend-down">' + d.issues.length + " issues</span>" + (d.flagSetComplete ? " found" : " so far (ML still running)");
+    }
+
+    if (d.scoreReady) {
+      const chanceTrend = d.score >= 0.7 ? "High" : (d.score >= 0.55 ? "Moderate" : "Low");
+      const trendClass = d.score >= 0.7 ? "trend-up" : (d.score >= 0.55 ? "" : "trend-down");
+      $("#kpiChanceNote").innerHTML = '<span class="' + trendClass + '">' + chanceTrend + "</span> — calibrated probability";
+    } else {
+      $("#kpiChanceNote").textContent = "ML scoring still running…";
+    }
 
     const gauge = $("#appealGaugeFill");
     const CIRC = 103.67;
-    gauge.style.strokeDashoffset = CIRC - (CIRC * d.successChance) / 100;
-    $("#gaugeValue").textContent = d.successChance + "%";
+    if (d.scoreReady) {
+      gauge.style.strokeDashoffset = CIRC - (CIRC * d.score) / 100;
+      $("#gaugeValue").textContent = Math.round(d.score * 100) + "%";
+    } else {
+      gauge.style.strokeDashoffset = CIRC;
+      $("#gaugeValue").textContent = "…";
+    }
+
+    // Appeal facts
+    const appealFactsEl = $("#appealFacts");
+    const facts = [];
+    if (d.scoreReady) {
+      if (d.issues.length) facts.push("<strong>" + d.issues.length + " flag" + (d.issues.length === 1 ? "" : "s") + "</strong> — <strong>" + money0(d.overcharge) + "</strong> in potentially flagged charges.");
+      if (d.scoreFactors.length >= 1) facts.push("<strong>Top factor:</strong> " + d.scoreFactors[0].label + " (" + (d.scoreFactors[0].direction === "up" ? "+" : "") + Math.round(d.scoreFactors[0].impact * 100) + " pts).");
+      facts.push("<strong>Confidence:</strong> " + (d.scoreCI ? pct(d.scoreCI[0]) + " – " + pct(d.scoreCI[1]) + " interval" : "calibrated") + " · based on " + d.scoreSample.toLocaleString() + " policies.");
+    } else {
+      facts.push("<strong>Score pending:</strong> ML scoring stage is still running in the background.");
+    }
+    appealFactsEl.innerHTML = facts
+      .map((f) => `<div class="appeal-fact"><span class="fact-icon">${ICONS.check}</span><span>${f}</span></div>`)
+      .join("");
+
+    // Overview issues
+    renderOverviewIssues();
+
+    // Overview actions (derived from flags)
+    renderOverviewActions();
   }
 
   function renderOverviewIssues() {
     const el = $("#overviewIssues");
-    el.innerHTML = currentData.issues
-      .map((issue) => `
-        <div class="issue-item clickable" data-open-issue="${issue.id}">
-          <span class="issue-icon ${TONE_CLASS[issue.tone]}">${SEV_ICON[issue.severity]}</span>
-          <div class="issue-body">
-            <div class="issue-top">
-              <strong>${issue.title}</strong>
-              <span class="amount">${money0(issue.amount)}</span>
-            </div>
-            <div class="issue-desc">${issue.desc}</div>
-            <div class="issue-meta">
-              <span>${issue.code}</span>
-              <span>${issue.confidence}</span>
+    const emptyEl = $("#overviewIssuesEmpty");
+    const d = currentData;
+    if (d.isClean) {
+      el.innerHTML = "";
+      emptyEl.hidden = false;
+      return;
+    }
+    emptyEl.hidden = true;
+    el.innerHTML = d.issues
+      .slice(0, 4)
+      .map((issue) => {
+        const cat = CATEGORY_META[issue.category] || { icon: ICONS.alert, tone: "blue" };
+        const badge = issue.detectionType === "rule"
+          ? '<span class="det-badge rule">rule</span>'
+          : '<span class="det-badge ml">ML</span>';
+        return `
+          <div class="issue-item clickable" data-open-issue="${issue.id}">
+            <span class="issue-icon ${TONE_CLASS[cat.tone]}">${cat.icon}</span>
+            <div class="issue-body">
+              <div class="issue-top">
+                <strong>${esc(issue.title)}</strong>
+                <span class="amount">${money0(issue.amount)}</span>
+              </div>
+              <div class="issue-desc">${esc(issue.desc)}</div>
+              <div class="issue-meta">
+                <span>${esc(issue.code)}</span>
+                <span>${esc(issue.confidence)}</span>
+                ${badge}
+              </div>
             </div>
           </div>
-        </div>
-      `)
+        `;
+      })
       .join("");
 
     el.querySelectorAll("[data-open-issue]").forEach((row) => {
-      row.addEventListener("click", () => { showPage("issues"); });
+      row.addEventListener("click", () => {
+        // deep link: navigate to issues and scroll to card
+        showPage("issues");
+        const card = document.querySelector(`.issue-card[data-flag-id="${row.dataset.openIssue}"]`);
+        if (card) setTimeout(() => card.scrollIntoView({ behavior: "smooth", block: "center" }), 150);
+      });
     });
   }
 
   function renderOverviewActions() {
     const el = $("#overviewActions");
-    const first = currentData.actions.filter((a) => !a.done).slice(0, 3);
-    el.innerHTML = first
+    const d = currentData;
+    if (d.isClean) {
+      el.innerHTML = `
+        <div class="action-item done">
+          <button class="action-check" disabled>${ICONS.check}</button>
+          <div class="action-body">
+            <div class="action-title">Bill verified</div>
+            <div class="action-sub">No billing errors detected — nothing to dispute.</div>
+          </div>
+          <span class="action-deadline safe">Normal</span>
+        </div>`;
+      return;
+    }
+    const actions = d.issues.slice(0, 3).map((issue, idx) => ({
+      id: "f-" + issue.id,
+      done: false,
+      title: "Address flag: " + issue.title,
+      sub: (issue.why && issue.why.contributions && issue.why.contributions[0] ? issue.why.contributions[0].description : issue.desc).slice(0, 90) + "…",
+      deadline: idx === 0 ? "Next" : "Flag#" + (idx + 1),
+      tone: idx === 0 ? "warn" : "safe"
+    }));
+    el.innerHTML = actions
       .map((a) => `
         <div class="action-item ${a.done ? "done" : ""}">
           <button class="action-check" data-action="${a.id}" aria-label="Mark as done">${ICONS.check}</button>
           <div class="action-body">
-            <div class="action-title">${a.title}</div>
-            <div class="action-sub">${a.sub}</div>
+            <div class="action-title">${esc(a.title)}</div>
+            <div class="action-sub">${esc(a.sub)}</div>
           </div>
-          <span class="action-deadline ${a.tone}">${a.deadline}</span>
+          <span class="action-deadline ${a.tone}">${esc(a.deadline)}</span>
         </div>
       `)
       .join("");
+  }
 
-    wireActionChecks(el);
+  /* ==========================================================
+     RENDERERS — BILL DETAIL
+     ========================================================== */
+
+  function renderBillHeader() {
+    const b = state.bill;
+    if (!b || !b.metadata) return;
+    const m = b.metadata;
+    $("#billProvider").textContent = m.provider || "—";
+    if (m.providerNpi) {
+      $("#billProvider").innerHTML = esc(m.provider) + ' <span class="npi-chip">NPI ' + esc(m.providerNpi) + "</span>";
+    }
+    $("#billPayer").textContent = m.payer || "—";
+    $("#billStatementDate").textContent = m.statementDate || "—";
+    $("#billAccountRef").textContent = m.accountRef || "—";
+    $("#billMember").textContent = m.memberName || "—";
+    $("#billMemberId").textContent = m.memberId || "—";
+
+    // Per-field metadata verification (parsed fields get verified badge; derived/missing get warning)
+    const metaVerifEls = document.querySelectorAll(".meta-verif");
+    metaVerifEls.forEach((el) => {
+      const field = el.dataset.billfield;
+      const val = m[field];
+      if (val) {
+        el.innerHTML = '<span class="verif-badge ok" title="Field extracted from the source document">' + ICONS.check + ' parsed</span>';
+      } else {
+        el.innerHTML = '<span class="verif-badge warn" title="Field not found on the document — please verify manually">' + ICONS.warn + ' review</span>';
+      }
+    });
+  }
+
+  function renderReconStrip() {
+    const t = state.bill && state.bill.totals;
+    if (!t) return;
+    $("#reconBilled").textContent = money(t.billed);
+    $("#reconAllowed").textContent = money(t.allowed);
+    $("#reconPaid").textContent = money(t.paid);
+    $("#reconPatient").textContent = money(t.patientResponsibility);
+
+    const statusEl = $("#reconStatus");
+    if (t.reconciliation && !t.reconciliation.ok) {
+      statusEl.className = "recon-status bad";
+      statusEl.innerHTML = '<span class="rs-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 9v4M12 17h.01"/><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/></svg></span>' +
+        '<div><strong>Reconciliation failed</strong><span>' + esc(t.reconciliation.note || "Billed ≠ allowed + patient responsibility") + (t.reconciliation.diff ? " · Diff: " + money(Math.abs(t.reconciliation.diff)) : "") + "</span></div>";
+    } else {
+      statusEl.className = "recon-status good";
+      statusEl.innerHTML = '<span class="rs-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></span>' +
+        '<div><strong>Reconciliation OK</strong><span>Billed = allowed + patient responsibility</span></div>';
+    }
+  }
+
+  function renderTabCounts() {
+    if (!state.bill) return;
+    const n = state.bill.lineItems.length;
+    $("#tabLineCount").textContent = n;
+    $("#tabExplainCount").textContent = n;
+  }
+
+  function renderWarningBanners() {
+    const warnings = state.bill && state.bill.extractionWarnings ? state.bill.extractionWarnings : [];
+    const warnBanner = $("#extractionWarningBanner");
+    const billWarnBanner = $("#billWarningBanner");
+    if (warnings.length) {
+      const text = warnings.map((w) => esc(w.message)).join(" ");
+      $("#extractionWarningText").innerHTML = "<strong>Low-confidence extraction:</strong> " + text;
+      $("#billWarningText").innerHTML = "<strong>Low-confidence extraction:</strong> " + text;
+      warnBanner.hidden = false;
+      billWarnBanner.hidden = false;
+    } else {
+      warnBanner.hidden = true;
+      billWarnBanner.hidden = true;
+    }
+  }
+
+  /* ==========================================================
+     RENDERERS — LINE ITEMS (per-field verification)
+     ========================================================== */
+
+  function verifBadge(v, label) {
+    if (!v) return "";
+    if (v.verified) {
+      return `<span class="verif-badge ok" title="${esc(v.note || "Extracted from document with high confidence")}">${ICONS.check} ${label ? "" : ""}</span>`;
+    }
+    if (v.method === "absent" || (!v.verified && !v.note)) {
+      return `<span class="verif-badge muted" title="Field not found on the source document">${ICONS.warn} absent</span>`;
+    }
+    return `<span class="verif-badge warn" title="${esc(v.note || "Extracted with low confidence — please review")}">${ICONS.warn} review</span>`;
   }
 
   function renderLineItems() {
     const el = $("#lineItemsBody");
-    el.innerHTML = currentData.lineItems
+    if (!state.bill) { el.innerHTML = ""; return; }
+    const isClean = currentData && currentData.isClean;
+
+    el.innerHTML = state.bill.lineItems
       .map((li) => {
-        const flagged = li.issue ? `<span class="flag-icon" title="Issue detected">${ICONS.alert}</span>` : "";
-        const pillClass = li.issue ? (currentData.issues.find((i) => i.id === li.issue)?.severity === "high" ? "danger" : "warn") : "";
+        const flagged = currentData && currentData.issues.some((i) => (i.lineItemIds || []).includes(li.id));
+        const rowClass = flagged ? "row-flagged" : "";
+        const chargeFlag = flagged ? '<span class="flag-icon" title="Flagged issue">' + ICONS.alert + "</span>" : "";
+
+        const code = li.code || li.cptCode || li.hcpcsCode || "—";
         return `
-          <tr>
-            <td>${li.date}</td>
-            <td><span class="code-pill ${pillClass}">${li.code}</span>${flagged}</td>
-            <td class="row-desc">${li.desc}</td>
-            <td>${li.qty}</td>
-            <td class="num">${money(li.amount)}</td>
+          <tr class="${rowClass}" data-line-item="${li.id}" data-bbox-page="${li.bbox && li.bbox.page || li.page || 1}" data-bbox-x="${li.bbox ? li.bbox.x : 0}" data-bbox-y="${li.bbox ? li.bbox.y : 0}" data-bbox-w="${li.bbox ? li.bbox.w : 0}" data-bbox-h="${li.bbox ? li.bbox.h : 0}">
+            <td>
+              ${esc(li.serviceDate)}${verifBadge(li.verification && li.verification.date)}
+            </td>
+            <td>
+              <span class="code-pill ${flagged ? "danger" : ""}">${esc(code)}</span>
+              ${chargeFlag}
+              <div class="cell-sub">${li.cptCode && li.hcpcsCode ? "CPT+HCPCS" : li.codeType || esc(li.codeType || "")}</div>
+              ${verifBadge(li.verification && li.verification.code)}
+            </td>
+            <td class="row-desc">
+              <a href="#" class="glossary-link" data-code="${esc(code)}" title="See full definition">${esc(li.description)}</a>
+              <div class="cell-sub">
+                ${li.modifiers && li.modifiers.length ? "Modifiers: " + esc(li.modifiers.join(", ")) : ""}
+                ${li.placeOfService ? (li.modifiers && li.modifiers.length ? " · " : "") + "POS " + esc(li.placeOfService) : ""}
+              </div>
+              ${verifBadge(li.verification && li.verification.description)}
+            </td>
+            <td>
+              ${(li.icdCodes || []).map((icd) => `
+                <div class="icd-row">
+                  <a href="#" class="glossary-link icd" data-code="${esc(icd.code)}">${esc(icd.code)}</a>
+                  <span class="icd-desc">${esc(icd.description)}</span>
+                </div>
+              `).join("") || '<span class="cell-sub">—</span>'}
+            </td>
+            <td>${li.units == null ? "—" : li.units}</td>
+            <td>${li.modifiers && li.modifiers.length ? esc(li.modifiers.join(", ")) : "—"}</td>
+            <td class="num">${money(li.amounts && li.amounts.charge)}${verifBadge(li.verification && li.verification.amounts)}</td>
+            <td class="num">${money(li.amounts && li.amounts.allowed)}</td>
+            <td class="num">${money(li.amounts && li.amounts.paid)}</td>
+            <td class="num">${money(li.amounts && li.amounts.patientResponsibility)}</td>
           </tr>
         `;
       })
       .join("");
+
+    // Wire row click → highlight bbox on source document
+    el.querySelectorAll("tr[data-line-item]").forEach((tr) => {
+      tr.addEventListener("click", () => {
+        const liId = tr.dataset.lineItem;
+        showPage("bill", {
+          lineItemId: liId,
+          page: parseInt(tr.dataset.bboxPage, 10) || 1,
+          bbox: {
+            x: parseFloat(tr.dataset.bboxX), y: parseFloat(tr.dataset.bboxY),
+            w: parseFloat(tr.dataset.bboxW), h: parseFloat(tr.dataset.bboxH)
+          }
+        });
+      });
+    });
+
+    // Wire glossary deep-links
+    el.querySelectorAll(".glossary-link").forEach((a) => {
+      a.addEventListener("click", (e) => {
+        e.preventDefault();
+        showPage("glossary", { code: a.dataset.code });
+      });
+    });
   }
 
   function renderExplanations() {
     const el = $("#explainList");
-    const statusFor = (li) => {
-      if (li.issue) {
-        const issue = currentData.issues.find((i) => i.id === li.issue);
-        return issue && issue.title.includes("denied")
-          ? '<span class="status denied">Denied</span>'
-          : '<span class="status partial">Flagged</span>';
-      }
-      return '<span class="status covered">Covered</span>';
-    };
+    if (!state.bill) { el.innerHTML = ""; return; }
 
-    el.innerHTML = currentData.lineItems
+    const flagFor = (li) => currentData && currentData.issues.find((i) => (i.lineItemIds || []).includes(li.id));
+
+    el.innerHTML = state.bill.lineItems
       .map((li) => {
-        const plain = li.issue
-          ? currentData.issues.find((i) => i.id === li.issue)?.whatHappened + " — " + currentData.issues.find((i) => i.id === li.issue)?.howToFix
+        const flag = flagFor(li);
+        const statusHtml = flag
+          ? `<span class="status ${flag.severity === "high" ? "denied" : "partial"}">Flagged</span>`
+          : '<span class="status covered">Covered</span>';
+
+        const plain = flag
+          ? `<strong>${esc(flag.title)}</strong> — ${esc(flag.whatHappened)}. ${esc(flag.howToFix)}`
           : "This service was covered by your plan. You are responsible for your normal cost-sharing amounts (deductible, coinsurance, or copay).";
+
         return `
           <div class="explain-item">
             <div class="e-code">
-              ${li.code}
-              ${statusFor(li)}
+              ${esc(li.code)}
+              ${statusHtml}
+              <a href="#" class="glossary-link" data-code="${esc(li.code)}" style="font-weight:600; font-size:12px; color:var(--teal-600);">See full definition</a>
             </div>
-            <div class="e-desc">${li.desc}</div>
+            <div class="e-desc">${esc(li.description)}</div>
             <div class="e-plain">${plain}</div>
           </div>
         `;
       })
       .join("");
+
+    el.querySelectorAll(".glossary-link").forEach((a) => {
+      a.addEventListener("click", (e) => {
+        e.preventDefault();
+        showPage("glossary", { code: a.dataset.code });
+      });
+    });
   }
 
-  function renderPlainSummary() {
-    $("#plainSummaryText").textContent = currentData.plainSummary;
+  /* ==========================================================
+     RENDERERS — DOCUMENT VIEWER (provenance)
+     ========================================================== */
+
+  function renderDocViewer() {
+    const pages = state.bill ? state.bill.pages : [];
+    const navEl = $("#docPageNav");
+    const thumbsEl = $("#pageThumbnails");
+
+    if (!pages.length) {
+      navEl.innerHTML = '<div class="empty-inline"><p>Document pages will appear here after OCR.</p></div>';
+      thumbsEl.innerHTML = "";
+      return;
+    }
+
+    // Page nav dots
+    navEl.innerHTML = pages
+      .map((p, idx) => {
+        const active = idx + 1 === state.currentPage ? "active" : "";
+        return `<button class="page-dot ${active}" data-page="${p.index}" title="Page ${p.index}">${p.index}</button>`;
+      })
+      .join("");
+    navEl.querySelectorAll(".page-dot").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        state.currentPage = parseInt(btn.dataset.page, 10);
+        renderDocViewer();
+      });
+    });
+
+    // Thumbnails
+    thumbsEl.innerHTML = pages
+      .map((p) => {
+        const active = p.index === state.currentPage ? "active" : "";
+        return `<button class="page-thumb ${active}" data-thumb-page="${p.index}" title="Page ${p.index}">
+          <img src="${p.imageUrl}" alt="Page ${p.index} thumbnail" loading="lazy" />
+        </button>`;
+      })
+      .join("");
+    thumbsEl.querySelectorAll(".page-thumb").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        state.currentPage = parseInt(btn.dataset.thumbPage, 10);
+        renderDocViewer();
+      });
+    });
+
+    // Main image
+    const page = pages.find((p) => p.index === state.currentPage) || pages[0];
+    const img = $("#docPageImage");
+    img.src = page.imageUrl;
+    img.onload = () => drawBBoxOverlay(img, page);
+    $("#docPageCaption").textContent = "Source document — page " + page.index + " of " + pages.length;
+
+    // Right side: provenance fields list
+    const dvrFields = $("#dvrFields");
+    if (state.bill && state.bill.lineItems) {
+      const onThisPage = state.bill.lineItems.filter((li) => (li.bbox && li.bbox.page) === state.currentPage);
+      dvrFields.innerHTML = onThisPage.length
+        ? onThisPage.map((li) => `
+            <button class="dvr-field ${state.activeLineItemId === li.id ? "active" : ""}" data-dvr-li="${li.id}">
+              <span class="df-code">${esc(li.code)}</span>
+              <span class="df-desc">${esc(li.description)}</span>
+              <span class="df-coord">(${Math.round(li.bbox.x * 100)}%, ${Math.round(li.bbox.y * 100)}%)</span>
+            </button>
+          `).join("")
+        : '<p class="cell-sub">No line items on this page.</p>';
+      dvrFields.querySelectorAll("[data-dvr-li]").forEach((btn) => {
+        btn.addEventListener("click", () => {
+          const li = state.bill.lineItems.find((l) => l.id === btn.dataset.dvrLi);
+          if (!li) return;
+          state.currentPage = li.bbox.page;
+          renderDocViewer();
+          drawBBoxOverlay($("#docPageImage"), page, li.bbox);
+          const row = $(`tr[data-line-item="${li.id}"]`);
+          if (row) { row.scrollIntoView({ behavior: "smooth", block: "center" }); row.classList.add("flash"); setTimeout(() => row.classList.remove("flash"), 1200); }
+        });
+      });
+    }
+
+    drawBBoxOverlay(img, page);
   }
+
+  function drawBBoxOverlay(img, page, overrideBBox) {
+    const canvas = $("#bboxCanvas");
+    canvas.innerHTML = "";
+    if (!img.src || !state.bill || !state.bill.lineItems) return;
+
+    const rect = img.getBoundingClientRect();
+    if (rect.width === 0) return;
+
+    // Bounding boxes for line items on this page
+    const onPage = state.bill.lineItems.filter((li) => li.bbox && li.bbox.page === page.index);
+    onPage.forEach((li) => {
+      const box = document.createElement("div");
+      box.className = "bbox";
+      if (state.activeLineItemId === li.id) box.classList.add("active");
+      const active = state.activeLineItemId === li.id || (overrideBBox && overrideBBox === li.bbox);
+      if (active) box.classList.add("active");
+      box.style.left = li.bbox.x * 100 + "%";
+      box.style.top = li.bbox.y * 100 + "%";
+      box.style.width = li.bbox.w * 100 + "%";
+      box.style.height = li.bbox.h * 100 + "%";
+      box.title = li.code + " — " + li.description;
+      box.addEventListener("click", (e) => {
+        e.stopPropagation();
+        const row = $(`tr[data-line-item="${li.id}"]`);
+        if (row) {
+          row.scrollIntoView({ behavior: "smooth", block: "center" });
+          row.classList.add("flash"); setTimeout(() => row.classList.remove("flash"), 1200);
+        }
+      });
+      canvas.appendChild(box);
+    });
+  }
+
+  /* ==========================================================
+     RENDERERS — ISSUES / FLAGS
+     ========================================================== */
+
+  const TONE_CLASS = { red: "tone-red", amber: "tone-amber", blue: "tone-blue", teal: "tone-teal" };
 
   function renderIssuesList() {
+    if (!currentData) return;
+
     const el = $("#issuesList");
-    const filtered = currentData.issues.filter((i) => currentIssueFilter === "all" || i.severity === currentIssueFilter);
+    const cleanState = $("#cleanBillState");
+    const summary = $("#flagSummary");
+    const mlSkeleton = $("#mlFlagsSkeleton");
+
+    const d = currentData;
+    if (d.isClean) {
+      el.innerHTML = "";
+      summary.hidden = true;
+      mlSkeleton.hidden = true;
+      cleanState.hidden = false;
+      return;
+    }
+    cleanState.hidden = true;
+    summary.hidden = false;
+    // Hide ML skeleton once flagSet is complete
+    mlSkeleton.hidden = d.flagSetComplete;
+
+    // Summary
+    const fsum = state.flags && state.flags.summary ? state.flags.summary : null;
+    if (fsum) {
+      $("#flagTotalAmount").textContent = money0(fsum.totalFlaggedAmount);
+      $("#flagRuleCount").textContent = fsum.ruleCount != null ? fsum.ruleCount : d.issues.filter((i) => i.detectionType === "rule").length;
+      $("#flagMlCount").textContent = fsum.mlCount != null ? fsum.mlCount : d.issues.filter((i) => i.detectionType === "ml").length;
+    }
+
+    const filtered = d.issues.filter((i) => state.currentIssueFilter === "all" || i.severity === state.currentIssueFilter);
 
     if (!filtered.length) {
       el.innerHTML = `<div class="dash-card" style="text-align:center; padding:40px;">
@@ -596,77 +1088,253 @@
     }
 
     el.innerHTML = filtered
-      .map((issue) => `
-        <div class="issue-card">
-          <div class="issue-head">
-            <div class="issue-head-left">
-              <span class="issue-big-icon ${TONE_CLASS[issue.tone]}">${SEV_ICON[issue.severity]}</span>
-              <div>
-                <h3>${issue.title}</h3>
-                <p>${issue.code} · ${issue.confidence}</p>
+      .map((issue) => {
+        const cat = CATEGORY_META[issue.category] || { label: "Issue", icon: ICONS.alert, tone: "blue" };
+        const isRule = issue.detectionType === "rule";
+        const detBadge = isRule
+          ? '<span class="det-badge rule" title="Deterministic rule — this is a fact, not a probability">Rule</span>'
+          : '<span class="det-badge ml" title="ML anomaly score — this is a probability estimate">ML anomaly</span>';
+
+        const whyPanel = issue.why && issue.why.contributions && issue.why.contributions.length
+          ? `
+            <div class="why-panel">
+              <div class="why-head">
+                <strong>${esc(issue.why.title || "Why this was flagged")}</strong>
+                <span class="why-note">SHAP feature contributions</span>
+              </div>
+              <ul class="why-list">
+                ${issue.why.contributions.map((c, idx) => `
+                  <li>
+                    <span class="why-direction ${c.direction === "up" ? "up" : "down"}">
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">${c.direction === "up" ? '<path d="M12 19V5M5 12l7-7 7 7"/>' : '<path d="M12 5v14M19 12l-7 7-7-7"/>'}</svg>
+                    </span>
+                    <span class="why-text">
+                      <strong>${esc(c.label)}</strong>
+                      <span>${esc(c.description)}</span>
+                    </span>
+                    <span class="why-value">${c.value != null ? esc(String(c.value)) : ""}</span>
+                  </li>
+                `).join("")}
+              </ul>
+            </div>
+          `
+          : "";
+
+        const relatedLineItems = (issue.lineItemIds || [])
+          .map((id) => state.bill && state.bill.lineItems.find((l) => l.id === id))
+          .filter(Boolean);
+
+        return `
+          <div class="issue-card" data-flag-id="${issue.id}">
+            <div class="issue-head">
+              <div class="issue-head-left">
+                <span class="issue-big-icon ${TONE_CLASS[cat.tone]}">${cat.icon}</span>
+                <div>
+                  <h3>${esc(issue.title)}</h3>
+                  <p>${esc(cat.label)} · ${esc(issue.code)} · ${detBadge} ${esc(issue.confidence)}</p>
+                </div>
+              </div>
+              <div class="issue-money">
+                <span class="amount">${money0(issue.amount)}</span>
+                <span class="confidence">potential impact</span>
+                <span class="severity-chip ${SEV_CLASS[issue.severity] || ""}">${esc(issue.severity)}</span>
               </div>
             </div>
-            <div class="issue-money">
-              <span class="amount">${money0(issue.amount)}</span>
-              <span class="confidence">potential savings</span>
+            <div class="issue-details">
+              <div class="issue-detail">
+                <span>What happened</span>
+                <p>${esc(issue.whatHappened)}</p>
+              </div>
+              <div class="issue-detail">
+                <span>Why it matters</span>
+                <p>${esc(issue.desc)}</p>
+              </div>
+            </div>
+            ${whyPanel}
+            <div class="issue-foot">
+              <div class="issue-links">
+                <strong style="font-size:12px; color:var(--slate-400); text-transform:uppercase; letter-spacing:0.04em;">Related line items</strong>
+                <div class="related-lines">
+                  ${relatedLineItems.length ? relatedLineItems.map((li) => `
+                    <button class="related-line" data-rel-li="${li.id}" data-page="${li.bbox ? li.bbox.page : 1}" data-x="${li.bbox ? li.bbox.x : 0}" data-y="${li.bbox ? li.bbox.y : 0}" data-w="${li.bbox ? li.bbox.w : 0}" data-h="${li.bbox ? li.bbox.h : 0}">
+                      <span class="rl-code">${esc(li.code)}</span>
+                      <span class="rl-desc">${esc(li.description)}</span>
+                      <span class="rl-amount">${money(li.amounts && li.amounts.charge)}</span>
+                    </button>
+                  `).join("") : '<span class="cell-sub">No line items linked</span>'}
+                </div>
+                ${issue.evidenceCode ? `<div class="evidence-ref"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/></svg> <span>${esc(issue.evidenceCode)}</span></div>` : ""}
+                ${issue.evidence ? `<div class="evidence-ref source"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 3"/></svg> <span>${esc(issue.evidence)}</span></div>` : ""}
+              </div>
+              <div class="issue-btn-group">
+                <button class="btn btn-secondary btn-sm" data-draft-for="${issue.id}">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
+                  Draft appeal
+                </button>
+              </div>
             </div>
           </div>
-          <div class="issue-details">
-            <div class="issue-detail">
-              <span>What happened</span>
-              <p>${issue.whatHappened}</p>
-            </div>
-            <div class="issue-detail">
-              <span>How to fix it</span>
-              <p>${issue.howToFix}</p>
-            </div>
-            <div class="issue-detail">
-              <span>Evidence</span>
-              <p>${issue.evidence}</p>
-            </div>
-            <div class="issue-detail">
-              <span>Why it matters</span>
-              <p>${issue.desc}</p>
-            </div>
-          </div>
-          <div class="issue-foot">
-            <a href="#" class="btn btn-secondary btn-sm" data-draft-for="${issue.id}">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
-              Draft appeal for this
-            </a>
-            <a href="#" class="btn btn-secondary btn-sm" data-view-bill="${issue.code}">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/></svg>
-              View in bill
-            </a>
-          </div>
-        </div>
-      `)
+        `;
+      })
       .join("");
 
+    // Wire related-line → bill deep link with bbox highlight
+    el.querySelectorAll("[data-rel-li]").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        showPage("bill", {
+          lineItemId: btn.dataset.relLi,
+          page: parseInt(btn.dataset.page, 10),
+          bbox: { x: parseFloat(btn.dataset.x), y: parseFloat(btn.dataset.y), w: parseFloat(btn.dataset.w), h: parseFloat(btn.dataset.h) }
+        });
+      });
+    });
+
     el.querySelectorAll("[data-draft-for]").forEach((btn) => {
-      btn.addEventListener("click", (e) => {
-        e.preventDefault();
-        showPage("appeal");
-      });
+      btn.addEventListener("click", () => showPage("appeal"));
     });
-    el.querySelectorAll("[data-view-bill]").forEach((btn) => {
-      btn.addEventListener("click", (e) => {
-        e.preventDefault();
-        showPage("bill");
-      });
+
+    // Severity filter is handled by button listeners below
+  }
+
+  // Severity filter
+  document.querySelectorAll(".severity-btn").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      document.querySelectorAll(".severity-btn").forEach((b) => b.classList.remove("active"));
+      btn.classList.add("active");
+      state.currentIssueFilter = btn.dataset.sev;
+      renderIssuesList();
     });
+  });
+
+  /* ==========================================================
+     RENDERERS — APPEAL
+     ========================================================== */
+
+  function renderAppealMeta() {
+    const d = currentData;
+    if (!d) return;
+
+    const scoreReady = d.scoreReady;
+    const ascValue = $("#ascValue");
+    const ascConfidence = $("#ascConfidence");
+    const ciBar = $("#ciBar");
+    const ciRange = $("#ciRange");
+    const ciPoint = $("#ciPoint");
+    const ciLow = $("#ciLowLabel");
+    const ciHigh = $("#ciHighLabel");
+    const scoreBar = $("#scoreBarFill");
+    const ascNote = $("#ascNote");
+    const ascModelMeta = $("#ascModelMeta");
+    const ascFacts = $("#ascFacts");
+
+    if (scoreReady) {
+      const score = d.score;
+      ascValue.innerHTML = Math.round(score * 100) + "<em>%</em>";
+      ascConfidence.innerHTML = '<span class="cal-badge">' + ICONS.check + ' calibrated probability</span>';
+      scoreBar.style.width = Math.round(score * 100) + "%";
+      ascNote.textContent = d.scoreNote || "Calibrated probability from the appeal model.";
+
+      if (d.scoreCI) {
+        ciBar.hidden = false;
+        const lo = Math.round(d.scoreCI[0] * 100);
+        const hi = Math.round(d.scoreCI[1] * 100);
+        const mid = Math.round(score * 100);
+        ciRange.style.left = lo + "%";
+        ciRange.style.width = Math.max(0, hi - lo) + "%";
+        ciPoint.style.left = mid + "%";
+        ciLow.textContent = lo + "%";
+        ciHigh.textContent = hi + "%";
+      } else {
+        ciBar.hidden = true;
+      }
+
+      ascModelMeta.innerHTML =
+        '<span class="model-meta">Model <code>' + esc(d.scoreModel || "—") + "</code></span>" +
+        '<span class="model-meta">Sample <code>' + (d.scoreSample || 0).toLocaleString() + " policies</code></span>" +
+        (d.scoreCalibration && d.scoreCalibration.expectedError != null
+          ? '<span class="model-meta">Cal. error <code>±' + Math.round(d.scoreCalibration.expectedError * 100) + "%</code></span>"
+          : "");
+
+      // Stale flag from the API — show recompute prompt if the backend marked it stale
+      if (d.scoreStale && !state._scoreMarkedStale) {
+        state._scoreMarkedStale = true;
+        $("#scoreRecompute").hidden = false;
+      }
+
+      // Factor breakdown
+      if (d.scoreFactors && d.scoreFactors.length) {
+        ascFacts.innerHTML =
+          '<div class="factor-title">What drives this score</div>' +
+          d.scoreFactors.map((f) => `
+            <div class="factor-row ${f.direction === "up" ? "up" : "down"}">
+              <span class="factor-icon ${f.direction === "up" ? "up" : "down"}">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">${f.direction === "up" ? '<path d="M12 19V5M5 12l7-7 7 7"/>' : '<path d="M12 5v14M19 12l-7 7-7-7"/>'}</svg>
+              </span>
+              <div class="factor-body">
+                <div class="factor-top">
+                  <strong>${esc(f.label)}</strong>
+                  <span class="factor-impact ${f.direction === "up" ? "up" : "down"}">${f.direction === "up" ? "+" : ""}${Math.round(f.impact * 100)} pts</span>
+                </div>
+                <p>${esc(f.description)}</p>
+              </div>
+            </div>
+          `).join("");
+      } else {
+        ascFacts.innerHTML = '<div class="factor-title">No factors yet — score pending.</div>';
+      }
+    } else {
+      ascValue.textContent = "…";
+      ascConfidence.innerHTML = "";
+      scoreBar.style.width = "0%";
+      ascNote.textContent = d.scoreNote || "Appeal score pending — ML scoring stage still running in the background.";
+      ciBar.hidden = true;
+      ascModelMeta.innerHTML = "";
+      ascFacts.innerHTML = `
+        <div class="skeleton-line w70"></div>
+        <div class="skeleton-line w50"></div>
+        <div class="skeleton-line w80"></div>
+        <p style="font-size:12.5px; color:#94a3b8; margin-top:8px;">Score will stream in when the scoring service completes. You can keep editing the letter in the meantime.</p>
+      `;
+    }
+
+    // Strategies from flags
+    renderStrategies();
+    renderLetter();
+
+    // Deadline pill
+    const deadline = $("#deadlinePillText");
+    if (d.issues.length) {
+      deadline.textContent = "14 days to appeal deadline";
+      $("#deadlinePill").className = "deadline-pill urgent";
+    } else {
+      deadline.textContent = "No appeal needed — clean bill";
+      $("#deadlinePill").className = "deadline-pill safe";
+    }
   }
 
   function renderStrategies() {
     const el = $("#strategyList");
-    const strategies = currentData.strategies;
+    const d = currentData;
+    if (!d) { el.innerHTML = ""; return; }
+
+    const strategies = d.issues.map((issue, idx) => ({
+      id: "s" + idx,
+      title: "Address " + issue.title,
+      desc: (issue.why && issue.why.contributions && issue.why.contributions[0] ? issue.why.contributions[0].description : issue.whatHappened)
+    }));
+
+    if (!strategies.length) {
+      el.innerHTML = `<div style="font-size:13px; color:var(--slate-500);">No billing errors — your appeal would focus on coverage or medical-necessity arguments instead.</div>`;
+      return;
+    }
+
     el.innerHTML = strategies
       .map((s, idx) => `
         <label class="${idx === 0 ? "selected" : ""}">
           <input type="radio" name="strategy" value="${s.id}" ${idx === 0 ? "checked" : ""} />
           <div class="st-body">
-            <strong>${s.title}</strong>
-            <p>${s.desc}</p>
+            <strong>${esc(s.title)}</strong>
+            <p>${esc(s.desc)}</p>
           </div>
         </label>
       `)
@@ -677,12 +1345,30 @@
         el.querySelectorAll("label").forEach((l) => l.classList.remove("selected"));
         label.classList.add("selected");
         showToast("Strategy updated — appeal letter regenerated.");
+        renderLetter();
       });
     });
   }
 
   function renderLetter() {
+    const ta = $("#letterTextarea");
     const d = currentData;
+    if (!d) { ta.value = ""; return; }
+
+    if (d.isClean) {
+      ta.value = `Re: Claim #${d.claim} — Record of Claim Review
+
+To Whom It May Concern,
+
+I am writing regarding claim #${d.claim} from ${d.provider}. Vitta reviewed this bill and found no billing errors, duplicate charges, or coverage surprises. The claim appears correctly coded and priced.
+
+If you believe there is an issue with this claim, please contact me.
+
+Sincerely,
+Alex Sharma`;
+      return;
+    }
+
     const issuesText = d.issues
       .map((issue, idx) => `${idx + 1}. ${issue.title}\n   ${issue.whatHappened}. Estimated impact: ${money0(issue.amount)}.`)
       .join("\n\n");
@@ -695,7 +1381,7 @@
 
 To Whom It May Concern,
 
-I am writing to appeal the processing of claim #${d.claim} for services provided by ${d.provider} on ${d.serviceDate}. I believe this claim contains billing errors that have resulted in an overcharge and I am requesting a full review.
+I am writing to appeal the processing of claim #${d.claim} for services provided by ${d.provider}. I believe this claim contains billing errors that have resulted in an overcharge and I am requesting a full review.
 
 ISSUES IDENTIFIED:
 
@@ -715,183 +1401,38 @@ Please contact me if you need any additional documentation. I look forward to yo
 Sincerely,
 Alex Sharma
 Claim #${d.claim}`;
-    $("#letterTextarea").value = letter;
+
+    ta.value = letter;
   }
 
-  function renderAppealMeta() {
+  // Letter edit → mark score stale (recompute hook)
+  $("#letterTextarea").addEventListener("input", () => {
     const d = currentData;
-    $("#ascValue").innerHTML = d.successChance + "<em>%</em>";
-    $("#ascNote").textContent = d.ascNote || "Based on similar cases in your state.";
-    $("#scoreBarFill").style.width = d.successChance + "%";
-    $("#deadlinePillText").textContent = d.deadlineText || "Appeal deadline pending";
-
-    const appealFactsEl = $("#appealFacts");
-    const facts = d.appealFacts || [];
-    appealFactsEl.innerHTML = facts
-      .map((f) => `
-        <div class="appeal-fact">
-          <span class="fact-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></span>
-          <span>${f}</span>
-        </div>
-      `)
-      .join("");
-
-    const ascFactsEl = $("#ascFacts");
-    const ascFacts = d.ascFacts || [];
-    ascFactsEl.innerHTML = ascFacts
-      .map((f) => `
-        <div class="asc-fact">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
-          ${f}
-        </div>
-      `)
-      .join("");
-  }
-
-  function renderTimeline() {
-    const el = $("#timeline");
-    el.innerHTML = currentData.timeline
-      .map((t) => `
-        <div class="timeline-item ${t.state}">
-          <div class="tl-title">
-            ${t.title}
-            <span class="tl-date">${t.date}</span>
-          </div>
-          <div class="tl-desc">${t.desc}</div>
-        </div>
-      `)
-      .join("");
-  }
-
-  function renderChecklist() {
-    const el = $("#checklist");
-    el.innerHTML = currentData.actions
-      .map((a) => `
-        <div class="action-item ${a.done ? "done" : ""}">
-          <button class="action-check" data-action="${a.id}" aria-label="Toggle action">${ICONS.check}</button>
-          <div class="action-body">
-            <div class="action-title">${a.title}</div>
-            <div class="action-sub">${a.sub}</div>
-          </div>
-          <span class="action-deadline ${a.tone}">${a.deadline}</span>
-        </div>
-      `)
-      .join("");
-
-    wireActionChecks(el);
-    updateActionCount();
-  }
-
-  function wireActionChecks(container) {
-    container.querySelectorAll(".action-check").forEach((check) => {
-      check.addEventListener("click", () => {
-        const id = check.dataset.action;
-        const action = currentData.actions.find((a) => a.id === id);
-        if (action) {
-          action.done = !action.done;
-          renderOverviewActions();
-          renderChecklist();
-        }
-      });
-    });
-  }
-
-  function updateActionCount() {
-    const remaining = currentData.actions.filter((a) => !a.done).length;
-    $("#navActionCount").textContent = remaining;
-  }
-
-  function updateCounts() {
-    $("#navIssueCount").textContent = currentData.issues.length;
-    updateActionCount();
-  }
-
-  function renderGlossary(filter = "") {
-    const el = $("#glossaryGrid");
-    const q = filter.toLowerCase();
-    const items = GLOSSARY.filter(
-      (g) => !q || g.code.toLowerCase().includes(q) || g.meaning.toLowerCase().includes(q) || g.type.toLowerCase().includes(q)
-    );
-    el.innerHTML = items
-      .map(
-        (g) => `
-        <div class="glossary-card">
-          <div class="g-code">${g.code}</div>
-          <span class="g-type">${g.type}</span>
-          <p>${g.meaning}</p>
-        </div>
-      `
-      )
-      .join("");
-  }
-
-  /* ==========================================================
-     EVENTS — upload, tabs, filters, actions
-     ========================================================== */
-
-  // Upload zone
-  const uploadZone = $("#uploadZone");
-  const fileInput = $("#fileInput");
-
-  function triggerUpload() {
-    fileInput.click();
-  }
-  uploadZone.addEventListener("click", triggerUpload);
-  uploadZone.addEventListener("keydown", (e) => {
-    if (e.key === "Enter" || e.key === " ") {
-      e.preventDefault();
-      triggerUpload();
+    if (!d || !d.scoreReady) return;
+    if (!state._scoreMarkedStale) {
+      state._scoreMarkedStale = true;
+      $("#scoreRecompute").hidden = false;
     }
   });
-  $("#heroUploadBtn").addEventListener("click", (e) => { e.preventDefault(); triggerUpload(); });
 
-  ["dragenter", "dragover"].forEach((evt) => {
-    uploadZone.addEventListener(evt, (e) => { e.preventDefault(); uploadZone.classList.add("dragover"); });
-  });
-  ["dragleave", "drop"].forEach((evt) => {
-    uploadZone.addEventListener(evt, (e) => { e.preventDefault(); uploadZone.classList.remove("dragover"); });
-  });
-  uploadZone.addEventListener("drop", (e) => {
-    if (e.dataTransfer.files.length) startScan("er");
-  });
-  fileInput.addEventListener("change", () => {
-    if (fileInput.files.length) startScan("er");
-    fileInput.value = "";
-  });
-
-  // Sample cards
-  document.querySelectorAll(".sample-card").forEach((card) => {
-    card.addEventListener("click", () => startScan(card.dataset.sample));
+  $("#recomputeScoreBtn").addEventListener("click", (e) => {
+    e.preventDefault();
+    if (!state.documentId) return;
+    showToast("Recomputing appeal score with your edits…");
+    api.recomputeAppealScore(state.documentId, { adjustment: 0.02 })
+      .then((newScore) => {
+        state.score = newScore;
+        state.scoreComplete = true;
+        state._scoreMarkedStale = false;
+        $("#scoreRecompute").hidden = true;
+        buildDerivedModel();
+        renderAppealMeta();
+        showToast("Appeal score updated — reflects your latest edits.");
+      })
+      .catch(() => showToast("Could not recompute — try again."));
   });
 
-  // Bill tabs
-  document.querySelectorAll(".tab-btn").forEach((btn) => {
-    btn.addEventListener("click", () => {
-      document.querySelectorAll(".tab-btn").forEach((b) => b.classList.remove("active"));
-      document.querySelectorAll(".tab-pane").forEach((p) => p.classList.remove("active"));
-      btn.classList.add("active");
-      $("#tab-" + btn.dataset.tab).classList.add("active");
-    });
-  });
-
-  // Severity filter
-  document.querySelectorAll(".severity-btn").forEach((btn) => {
-    btn.addEventListener("click", () => {
-      document.querySelectorAll(".severity-btn").forEach((b) => b.classList.remove("active"));
-      btn.classList.add("active");
-      currentIssueFilter = btn.dataset.sev;
-      renderIssuesList();
-    });
-  });
-
-  // Glossary search
-  $("#glossarySearch").addEventListener("input", (e) => renderGlossary(e.target.value));
-
-  // Cross-nav buttons
-  $("#viewBillBtn").addEventListener("click", (e) => { e.preventDefault(); showPage("bill"); });
-  $("#goAppealBtn").addEventListener("click", (e) => { e.preventDefault(); showPage("appeal"); });
-
-  // Appeal letter actions
+  // Copy / download / share / send letter
   $("#copyLetterBtn").addEventListener("click", (e) => {
     e.preventDefault();
     const ta = $("#letterTextarea");
@@ -899,24 +1440,20 @@ Claim #${d.claim}`;
     navigator.clipboard?.writeText(ta.value).catch(() => {});
     showToast("Appeal letter copied to clipboard.");
   });
-
   $("#downloadLetterBtn").addEventListener("click", (e) => {
     e.preventDefault();
     downloadText("appeal-letter.txt", $("#letterTextarea").value);
     showToast("Appeal letter downloaded.");
   });
-
   $("#downloadBillBtn").addEventListener("click", (e) => {
     e.preventDefault();
     downloadText("vitta-bill-report.txt", buildBillReport());
     showToast("Bill report downloaded.");
   });
-
   $("#sendLetterBtn").addEventListener("click", (e) => {
     e.preventDefault();
     showToast("Appeal marked as sent — added to your timeline.");
   });
-
   $("#shareLetterBtn").addEventListener("click", (e) => {
     e.preventDefault();
     showToast("Secure share link created (expires in 7 days).");
@@ -941,24 +1478,250 @@ Claim #${d.claim}`;
       "===============================",
       "",
       `Provider: ${d.provider}`,
-      `Insurer: ${d.insurer}`,
-      `Claim #: ${d.claim}`,
-      `Service date: ${d.serviceDate}`,
+      `Payer: ${d.payer}`,
+      `Account: ${d.claim}`,
+      `Statement date: ${d.serviceDate}`,
       "",
       `Total billed: ${money(d.totalBilled)}`,
-      `Fair price range: ${money0(d.fairLow)} – ${money0(d.fairHigh)}`,
-      `Likely overcharge: ${money0(d.overcharge)}`,
-      `Appeal success chance: ${d.successChance}%`,
+      `Patient responsibility: ${money(d.patientResponsibility)}`,
+      `Flagged amount: ${money0(d.overcharge)}`,
+      `Appeal success chance: ${d.scoreReady ? Math.round(d.score * 100) + "%" : "pending"}`,
       "",
       "ISSUES FOUND:",
-      ...d.issues.map((i) => `- ${i.title}: ${money0(i.amount)} (${i.severity})`),
+      ...(d.isClean ? ["- None. This bill looks correct."] : d.issues.map((i) => `- ${i.title}: ${money0(i.amount)} (${i.detectionType}, ${i.severity})`)),
       "",
-      d.plainSummary,
+      "RECONCILIATION:",
+      d.reconciliation ? (d.reconciliation.ok ? "- OK: Billed = allowed + patient responsibility" : `- FAILED: ${d.reconciliation.note || ""}`) : "- N/A"
     ];
     return lines.join("\n");
   }
 
-  // Upgrade modal
+  /* ==========================================================
+     RENDERERS — TIMELINE + CHECKLIST
+     ========================================================== */
+
+  function renderTimeline() {
+    const el = $("#timeline");
+    const d = currentData;
+    if (!d) { el.innerHTML = ""; return; }
+
+    const items = [
+      { title: "Bill uploaded", date: "Today", desc: "Document uploaded and OCR processed.", state: "done" },
+      { title: "Extraction complete", date: "Today", desc: "Line items mapped to ParsedBill schema.", state: "done" },
+      ...(d.issues.length ? [{
+        title: "Address flagged issues",
+        date: "Next",
+        desc: d.issues.length + " flag" + (d.issues.length === 1 ? "" : "s") + " to review — see the Issues page.",
+        state: "current"
+      }] : []),
+      { title: "File internal appeal", date: "Within 14 days", desc: "Send appeal to " + (d.payer || "insurer") + ".", state: "pending" },
+      { title: "External review", date: "If needed", desc: "Independent review if internal appeal is denied.", state: "pending" }
+    ];
+
+    el.innerHTML = items
+      .map((t) => `
+        <div class="timeline-item ${t.state}">
+          <div class="tl-title">${esc(t.title)} <span class="tl-date">${esc(t.date)}</span></div>
+          <div class="tl-desc">${esc(t.desc)}</div>
+        </div>
+      `)
+      .join("");
+  }
+
+  function renderChecklist() {
+    const el = $("#checklist");
+    const d = currentData;
+    if (!d) { el.innerHTML = ""; return; }
+
+    const actions = d.isClean
+      ? [{ id: "c1", done: true, title: "Bill verified", sub: "No billing errors found.", deadline: "Done", tone: "safe" }]
+      : d.issues.map((issue, idx) => ({
+          id: "flag-" + issue.id,
+          done: false,
+          title: issue.title,
+          sub: issue.whatHappened,
+          deadline: idx === 0 ? "Urgent" : "Review",
+          tone: idx === 0 ? "urgent" : "warn"
+        }));
+
+    el.innerHTML = actions
+      .map((a) => `
+        <div class="action-item ${a.done ? "done" : ""}">
+          <button class="action-check" data-action="${a.id}" aria-label="Toggle action">${ICONS.check}</button>
+          <div class="action-body">
+            <div class="action-title">${esc(a.title)}</div>
+            <div class="action-sub">${esc(a.sub)}</div>
+          </div>
+          <span class="action-deadline ${a.tone}">${esc(a.deadline)}</span>
+        </div>
+      `)
+      .join("");
+
+    wireActionChecks(el);
+    updateActionCount();
+  }
+
+  function wireActionChecks(container) {
+    container.querySelectorAll(".action-check").forEach((check) => {
+      check.addEventListener("click", () => {
+        const id = check.dataset.action;
+        const parent = check.closest(".action-item");
+        if (parent) parent.classList.toggle("done");
+        updateActionCount();
+      });
+    });
+  }
+
+  function updateActionCount() {
+    if (currentData) {
+      $("#navActionCount").textContent = currentData.isClean ? 1 : currentData.issues.length;
+    }
+  }
+
+  /* ==========================================================
+     RENDERERS — GLOSSARY (API-wired + deep-link)
+     ========================================================== */
+
+  let glossaryCache = [];
+
+  function renderGlossary(filter = "") {
+    const grid = $("#glossaryGrid");
+    const skeleton = $("#glossarySkeleton");
+
+    api.searchCodes(filter).then((items) => {
+      glossaryCache = items;
+      skeleton.hidden = true;
+      grid.innerHTML = items
+        .map((g) => `
+          <button class="glossary-card" data-gloss-code="${esc(g.code)}" style="text-align:left; cursor:pointer; display:block; width:100%;">
+            <div class="g-code">${esc(g.code)}</div>
+            <span class="g-type">${esc(g.type)}${g.deprecated ? ' · <span style="color:var(--red-600);">deprecated</span>' : ""}</span>
+            <p>${esc(g.plainLanguage || g.description)}</p>
+            <div class="g-source">${esc(g.source || "")}</div>
+          </button>
+        `)
+        .join("");
+
+      grid.querySelectorAll("[data-gloss-code]").forEach((card) => {
+        card.addEventListener("click", () => openGlossaryDetail(card.dataset.glossCode));
+      });
+
+      if (!items.length) {
+        grid.innerHTML = `<div class="dash-card" style="grid-column:1/-1; text-align:center; padding:32px;">
+          <p style="color:var(--slate-500);">No codes match "${esc(filter)}".</p>
+        </div>`;
+      }
+    });
+  }
+
+  function openGlossaryDetail(code) {
+    const detail = $("#glossaryDetail");
+    api.getCode(code)
+      .then((def) => {
+        $("#gdCode").textContent = def.code;
+        $("#gdType").textContent = def.type + (def.deprecated ? " · deprecated" : "");
+        $("#gdTitle").textContent = def.description;
+        $("#gdPlain").textContent = def.plainLanguage || def.description;
+        $("#gdCategory").textContent = def.category || "—";
+        $("#gdAka").textContent = def.aka || "—";
+        $("#gdSource").textContent = def.source || "—";
+        $("#gdStatus").textContent = def.deprecated ? "Deprecated" + (def.supersededBy ? " → " + def.supersededBy : "") : "Active";
+        const notes = $("#gdNotes");
+        if (def.notes) {
+          notes.hidden = false;
+          notes.innerHTML = "<strong>Notes:</strong> " + esc(def.notes);
+        } else {
+          notes.hidden = true;
+        }
+        detail.hidden = false;
+        detail.scrollIntoView({ behavior: "smooth", block: "center" });
+      })
+      .catch((err) => {
+        showToast(err && err.message ? err.message : "Code not found.");
+      });
+  }
+
+  $("#gdClose").addEventListener("click", () => { $("#glossaryDetail").hidden = true; });
+  $("#gdCloseBtn").addEventListener("click", (e) => { e.preventDefault(); $("#glossaryDetail").hidden = true; });
+
+  $("#glossarySearch").addEventListener("input", (e) => {
+    const q = e.target.value.trim();
+    renderGlossaryFiltered(q);
+  });
+
+  let glossaryTimer = null;
+  function renderGlossaryFiltered(q) {
+    const grid = $("#glossaryGrid");
+    const skeleton = $("#glossarySkeleton");
+    clearTimeout(glossaryTimer);
+    glossaryTimer = setTimeout(() => {
+      // Debounce like a real API call
+      api.searchCodes(q).then((items) => {
+        skeleton.hidden = true;
+        grid.innerHTML = items
+          .map((g) => `
+            <button class="glossary-card" data-gloss-code="${esc(g.code)}" style="text-align:left; cursor:pointer; display:block; width:100%;">
+              <div class="g-code">${esc(g.code)}</div>
+              <span class="g-type">${esc(g.type)}</span>
+              <p>${esc(g.plainLanguage || g.description)}</p>
+              <div class="g-source">${esc(g.source || "")}</div>
+            </button>
+          `)
+          .join("");
+        grid.querySelectorAll("[data-gloss-code]").forEach((card) => {
+          card.addEventListener("click", () => openGlossaryDetail(card.dataset.glossCode));
+        });
+        if (!items.length) {
+          grid.innerHTML = `<div class="dash-card" style="grid-column:1/-1; text-align:center; padding:32px;">
+            <p style="color:var(--slate-500);">No codes match "${esc(q)}".</p>
+          </div>`;
+        }
+      });
+    }, 180);
+  }
+
+  /* ==========================================================
+     TOPBAR SEARCH — deep-links to glossary
+     ========================================================== */
+
+  const topbarSearch = document.querySelector(".topbar-actions .search-box input");
+  if (topbarSearch) {
+    topbarSearch.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") {
+        const q = topbarSearch.value.trim();
+        if (q) {
+          showPage("glossary");
+          $("#glossarySearch").value = q;
+          renderGlossaryFiltered(q);
+          showToast("Searching glossary for \"" + q + "\"…");
+        }
+      }
+    });
+  }
+
+  /* ==========================================================
+     CROSS-NAV BUTTONS
+     ========================================================== */
+
+  $("#viewBillBtn").addEventListener("click", (e) => { e.preventDefault(); showPage("bill"); });
+  $("#goAppealBtn").addEventListener("click", (e) => { e.preventDefault(); showPage("appeal"); });
+  $("#cleanViewBillBtn").addEventListener("click", (e) => { e.preventDefault(); showPage("bill"); });
+  $("#cleanAppealBtn").addEventListener("click", (e) => { e.preventDefault(); showPage("appeal"); });
+
+  // Bill tabs
+  document.querySelectorAll(".tab-btn").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      document.querySelectorAll(".tab-btn").forEach((b) => b.classList.remove("active"));
+      document.querySelectorAll(".tab-pane").forEach((p) => p.classList.remove("active"));
+      btn.classList.add("active");
+      $("#tab-" + btn.dataset.tab).classList.add("active");
+    });
+  });
+
+  /* ==========================================================
+     MODAL + TOASTS
+     ========================================================== */
+
   const modalBackdrop = $("#modalBackdrop");
   function openModal() { modalBackdrop.classList.add("open"); }
   function closeModal() { modalBackdrop.classList.remove("open"); }
@@ -974,26 +1737,20 @@ Claim #${d.claim}`;
     if (e.target === modalBackdrop) closeModal();
   });
 
-  // Delete data
   $("#deleteDataBtn").addEventListener("click", (e) => {
     e.preventDefault();
     showToast("Data deletion initiated — you'll get a confirmation email.");
   });
 
-  // Doc upload
   $("#docUploadRow").addEventListener("click", () => {
     showToast("Document upload started (PDF, JPG, PNG).");
   });
-
-  /* ==========================================================
-     TOASTS
-     ========================================================== */
 
   function showToast(message) {
     const container = $("#toastContainer");
     const toast = document.createElement("div");
     toast.className = "toast";
-    toast.innerHTML = `${ICONS.check}<span>${message}</span>`;
+    toast.innerHTML = `${ICONS.check}<span>${esc(message)}</span>`;
     container.appendChild(toast);
     setTimeout(() => {
       toast.classList.add("out");
