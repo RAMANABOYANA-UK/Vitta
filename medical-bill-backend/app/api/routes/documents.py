@@ -14,8 +14,10 @@ from app.schemas import (
     DocumentDetailResponse,
     DocumentResponse,
     DocumentStatusResponse,
+    Letter,
     ParsedBill,
 )
+from app.services.letter_verifier import verify_letter
 from app.services.pipeline import run_pipeline, update_document_status
 from app.services.storage import storage_service
 
@@ -167,6 +169,44 @@ async def get_document_status(
         "status": document.status,
         "error_message": document.error_message,
         "updated_at": document.updated_at,
+    }
+
+
+@router.patch(
+    "/{document_id}/letter",
+    summary="Update and verify a document's appeal letter",
+)
+async def update_letter(
+    document_id: str,
+    body: dict,
+    session: AsyncSession = Depends(get_session),
+) -> dict:
+    """Allow editing a letter and re-verifying it against the bill."""
+    document = await _get_document_or_404(document_id, session)
+    if not document.result_json:
+        raise HTTPException(
+            status_code=409,
+            detail="Document has not finished processing yet",
+        )
+
+    bill = ParsedBill.model_validate(document.result_json)
+    content_markdown = body.get("content_markdown", "")
+    is_valid, verified_fields, problems = verify_letter(bill, content_markdown)
+    bill.letter = Letter(
+        status="edited",
+        content_markdown=content_markdown,
+        verified_fields=verified_fields,
+    )
+
+    document.result_json = bill.model_dump(mode="json")
+    session.add(document)
+    await session.commit()
+
+    return {
+        "document_id": document_id,
+        "letter": bill.letter,
+        "is_fully_verified": is_valid,
+        "problems": problems,
     }
 
 

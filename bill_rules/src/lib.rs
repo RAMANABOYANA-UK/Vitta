@@ -1,31 +1,41 @@
-//! # bill_rules
-//!
-//! Deterministic rules engine for medical bill analysis.
-//!
-//! This crate consumes structured medical bill data (mirroring the Python
-//! backend's `ParsedBill` schema) and returns the same data enriched with
-//! high-confidence flags for:
-//!
-//! - **Amount reconciliation** — math errors in allowed/paid/patient responsibility
-//! - **Duplicate detection** — same CPT code + service date + similar charge
-//! - **NCCI unbundling** — component codes billed alongside comprehensive codes
-//!
-//! The engine is pure, deterministic, and easy to extend with new rules.
-//! It communicates with the Python backend via `serde`-compatible JSON.
-//!
-//! # Example
-//!
-//! ```rust
-//! use bill_rules::{ParsedBill, apply_rules};
-//!
-//! let mut bill = ParsedBill::new("doc-123");
-//! // ... populate bill with line items ...
-//! let enriched = apply_rules(bill);
-//! ```
-
 pub mod engine;
 pub mod rules;
 pub mod types;
 
-pub use engine::apply_rules;
-pub use types::*;
+use serde_json::Value;
+use thiserror::Error;
+use types::{RuleInput, Totals};
+
+#[derive(Debug, Error)]
+pub enum EngineError {
+    #[error("input document is not a JSON object")]
+    NotAnObject,
+    #[error("failed to parse line_items: {0}")]
+    LineItemsParse(serde_json::Error),
+    #[error("failed to parse totals: {0}")]
+    TotalsParse(serde_json::Error),
+    #[error("failed to serialize enriched line_items: {0}")]
+    Serialize(serde_json::Error),
+}
+
+pub fn apply_rules_to_document(mut doc: Value) -> Result<Value, EngineError> {
+    let obj = doc.as_object_mut().ok_or(EngineError::NotAnObject)?;
+
+    let line_items_value = obj.get("line_items").cloned().unwrap_or(Value::Array(vec![]));
+    let totals_value = obj.get("totals").cloned().unwrap_or(Value::Null);
+
+    let line_items = serde_json::from_value(line_items_value).map_err(EngineError::LineItemsParse)?;
+    let totals: Totals = if totals_value.is_null() {
+        Totals::default()
+    } else {
+        serde_json::from_value(totals_value).map_err(EngineError::TotalsParse)?
+    };
+
+    let input = RuleInput { line_items, totals };
+    let enriched = engine::apply_rules(input);
+
+    let enriched_line_items = serde_json::to_value(&enriched.line_items).map_err(EngineError::Serialize)?;
+    obj.insert("line_items".to_string(), enriched_line_items);
+
+    Ok(doc)
+}
