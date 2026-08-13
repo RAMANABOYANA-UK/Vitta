@@ -60,7 +60,11 @@ def test_hallucinated_denial_code_caught():
 
 def test_real_denial_code_verified():
     bill = make_bill()
-    ok, verified, problems = verify_letter(bill, "Re: Appeal\n\nThis claim was denied under CO-97, which we contest.")
+    ok, verified, problems = verify_letter(
+        bill,
+        "Re: Appeal of Claim GX-2025-883241\n\n"
+        "For services on 07/22/2026, this claim was denied under CO-97, which we contest.",
+    )
     assert ok and "denial_CO-97" in verified
 
 
@@ -72,7 +76,11 @@ def test_hallucinated_npi_caught():
 
 def test_real_npi_verified():
     bill = make_bill()
-    ok, verified, problems = verify_letter(bill, "Re: Appeal\n\nProvider NPI 1234567893 submitted this claim.")
+    ok, verified, problems = verify_letter(
+        bill,
+        "Re: Appeal of Claim GX-2025-883241\n\n"
+        "For services on 07/22/2026, provider NPI 1234567893 submitted this claim.",
+    )
     assert ok and "provider_npi" in verified
 
 

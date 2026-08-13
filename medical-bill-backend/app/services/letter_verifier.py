@@ -11,6 +11,10 @@ generation side (see letter_generator.py's updated STRICT_SYSTEM_PROMPT
 and _template_letter) so both the LLM path and the deterministic-template
 fallback produce text this verifier can check unambiguously.
 
+The one exception is HCPCS-style codes (letter + 4 digits, e.g. "G0463"):
+a bare letter+4-digit token in prose is unambiguous enough to scan
+unlabeled, because ZIP codes and ages are numeric-only.
+
 Dollar amounts are the one fact class still scanned unlabeled, because
 they appear too naturally in prose ("...totaling $1,240.00...") to force
 a label without making letters read stiffly — the tradeoff there is
@@ -29,6 +33,10 @@ _CODE_RE = re.compile(
     re.IGNORECASE,
 )
 
+# Unlabeled HCPCS-style codes: letter + 4 digits (e.g., G0463, J3490).
+# Unambiguous because ZIP codes and ages are numeric-only.
+_UNLABELED_HCPCS_RE = re.compile(r"\b[A-Z]\d{4}\b", re.IGNORECASE)
+
 _NPI_RE = re.compile(r"\bNPI\s*:?\s*(\d{10})\b", re.IGNORECASE)
 
 _DENIAL_CODE_RE = re.compile(r"\b(CO|PR|OA|CR)-\d{1,3}\b", re.IGNORECASE)
@@ -43,8 +51,8 @@ def verify_letter(bill: ParsedBill, letter_content: str) -> Tuple[bool, List[str
     content = letter_content.replace("**", "").replace("__", "")
     content_lower = content.lower()
 
-    _check_claim_number(bill, content_lower, verified)
-    _check_service_date(bill, content_lower, verified)
+    _check_claim_number(bill, content_lower, verified, problems)
+    _check_service_date(bill, content_lower, verified, problems)
     _check_codes(bill, content, verified, problems)
     _check_npi(bill, content, verified, problems)
     _check_denial_codes(bill, content, verified, problems)
@@ -53,13 +61,28 @@ def verify_letter(bill: ParsedBill, letter_content: str) -> Tuple[bool, List[str
     return len(problems) == 0, sorted(set(verified)), problems
 
 
-def _check_claim_number(bill: ParsedBill, content_lower: str, verified: List[str]) -> None:
+def _check_claim_number(
+    bill: ParsedBill,
+    content_lower: str,
+    verified: List[str],
+    problems: List[str],
+) -> None:
+    """Claim number must appear in the letter — a real appeal always cites it."""
     claim_number = (bill.payer or {}).get("claim_number")
-    if claim_number and str(claim_number).lower() in content_lower:
-        verified.append("claim_number")
+    if claim_number:
+        if str(claim_number).lower() in content_lower:
+            verified.append("claim_number")
+        else:
+            problems.append(f"Claim number {claim_number} missing from letter")
 
 
-def _check_service_date(bill: ParsedBill, content_lower: str, verified: List[str]) -> None:
+def _check_service_date(
+    bill: ParsedBill,
+    content_lower: str,
+    verified: List[str],
+    problems: List[str],
+) -> None:
+    """Service date must appear in the letter in at least one common format."""
     if not bill.service_date:
         return
     variants = [
@@ -70,13 +93,27 @@ def _check_service_date(bill: ParsedBill, content_lower: str, verified: List[str
     ]
     if any(v.lower() in content_lower for v in variants):
         verified.append("service_date")
+    else:
+        problems.append(
+            f"Service date {bill.service_date.isoformat()} missing from letter"
+        )
 
 
-def _check_codes(bill: ParsedBill, content: str, verified: List[str], problems: List[str]) -> None:
+def _check_codes(
+    bill: ParsedBill,
+    content: str,
+    verified: List[str],
+    problems: List[str],
+) -> None:
     known_codes = {item.cpt_hcpcs.upper() for item in bill.line_items if item.cpt_hcpcs}
+    checked_codes: set[str] = set()
 
+    # Labeled codes: "CPT 99284", "HCPCS G0463", "CPT/HCPCS 99284"
     for match in _CODE_RE.finditer(content):
         code = match.group(1).upper()
+        if code in checked_codes:
+            continue
+        checked_codes.add(code)
         if code in known_codes:
             verified.append(f"code_{code}")
         else:
@@ -85,8 +122,28 @@ def _check_codes(bill: ParsedBill, content: str, verified: List[str], problems: 
                 f"does not appear in the bill's line items."
             )
 
+    # Unlabeled HCPCS-style codes (letter + 4 digits) — unambiguous because
+    # ZIP codes and ages are numeric-only. A bare "G0463" in prose is almost
+    # certainly a procedure code.
+    for match in _UNLABELED_HCPCS_RE.finditer(content):
+        code = match.group(0).upper()
+        if code in checked_codes:
+            continue
+        checked_codes.add(code)
+        if code in known_codes:
+            verified.append(f"code_{code}")
+        else:
+            problems.append(
+                f"Code '{code}' appears in the letter but is not on the bill."
+            )
 
-def _check_npi(bill: ParsedBill, content: str, verified: List[str], problems: List[str]) -> None:
+
+def _check_npi(
+    bill: ParsedBill,
+    content: str,
+    verified: List[str],
+    problems: List[str],
+) -> None:
     known_npi = str((bill.provider or {}).get("npi", "")).strip()
 
     for match in _NPI_RE.finditer(content):
@@ -100,7 +157,12 @@ def _check_npi(bill: ParsedBill, content: str, verified: List[str], problems: Li
             )
 
 
-def _check_denial_codes(bill: ParsedBill, content: str, verified: List[str], problems: List[str]) -> None:
+def _check_denial_codes(
+    bill: ParsedBill,
+    content: str,
+    verified: List[str],
+    problems: List[str],
+) -> None:
     known_denials = {
         str(d.get("code", "")).upper() for d in (bill.denial_codes or []) if d.get("code")
     }
@@ -116,7 +178,12 @@ def _check_denial_codes(bill: ParsedBill, content: str, verified: List[str], pro
             )
 
 
-def _check_dollar_amounts(bill: ParsedBill, content: str, verified: List[str], problems: List[str]) -> None:
+def _check_dollar_amounts(
+    bill: ParsedBill,
+    content: str,
+    verified: List[str],
+    problems: List[str],
+) -> None:
     """Unlike codes/NPI/denials, dollar amounts are intentionally NOT
     required to carry a label — "totaling $1,240.00 for the visit" reads
     naturally and forcing a label here would make every letter stilted.

@@ -103,7 +103,15 @@ class DocumentDetailResponse(DocumentResponse):
     result: Optional[ParsedBill] = None
 
 
+class LetterUpdateRequest(BaseModel):
+    """Request body for PATCH /documents/{id}/letter."""
+
+    content_markdown: str = Field(..., min_length=1)
+
+
 class HealthResponse(BaseModel):
     status: str
     environment: str
     version: str
+    rules_engine: Optional[dict] = None
+    llm_enabled: Optional[bool] = None

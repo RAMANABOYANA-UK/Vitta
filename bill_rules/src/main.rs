@@ -121,10 +121,28 @@ async fn apply_rules_handler(
                 })
                 .unwrap_or(0);
 
+            // Build a rule-by-rule breakdown for structured logging.
+            let mut rule_breakdown: Vec<(String, usize)> = Vec::new();
+            if let Some(items) = enriched["line_items"].as_array() {
+                let mut counts: std::collections::BTreeMap<String, usize> =
+                    std::collections::BTreeMap::new();
+                for item in items {
+                    if let Some(flags) = item.get("flags").and_then(|f| f.as_array()) {
+                        for flag in flags {
+                            if let Some(rule_id) = flag.get("rule_id").and_then(|r| r.as_str()) {
+                                *counts.entry(rule_id.to_string()).or_insert(0) += 1;
+                            }
+                        }
+                    }
+                }
+                rule_breakdown = counts.into_iter().collect();
+            }
+
             tracing::info!(
                 document_id = %document_id,
                 total_flags,
                 body_bytes,
+                rule_breakdown = ?rule_breakdown,
                 "rules applied successfully"
             );
             Ok(Json(enriched))
