@@ -5,7 +5,9 @@
 //! cargo run --example demo
 //! ```
 
-use bill_rules::{apply_rules, LineItem, ParsedBill, Totals};
+use bill_rules::engine;
+use bill_rules::types::{LineItem, RuleInput, Totals};
+use serde_json::json;
 
 fn make_item(
     id: &str,
@@ -29,6 +31,7 @@ fn make_item(
         patient_responsibility: patient_resp,
         modifiers: vec![],
         flags: vec![],
+        service_date: None,
     }
 }
 
@@ -37,10 +40,7 @@ fn main() {
     // 1. Duplicate ECG (93000) with identical charge
     // 2. Sigmoidoscopy (45330) + Colonoscopy (45378) → NCCI unbundling
     // 3. Math error: patient responsibility doesn't match allowed - paid
-    let bill = ParsedBill {
-        document_id: "demo-bill-001".to_string(),
-        status: "processing".to_string(),
-        service_date: None,
+    let input = RuleInput {
         line_items: vec![
             make_item(
                 "LI-1",
@@ -107,15 +107,15 @@ fn main() {
     };
 
     println!("=== Medical Bill Rules Engine Demo ===\n");
-    println!("Input: {} line items, billed ${:.2}", bill.line_item_count(), bill.totals.billed);
+    println!("Input: {} line items, billed ${:.2}", input.line_items.len(), input.totals.billed);
 
     // Run the rules engine
-    let result = apply_rules(bill);
+    let output = engine::apply_rules(input);
 
     println!("\n--- Detected Flags ---\n");
 
     let mut flag_count = 0;
-    for item in &result.line_items {
+    for item in &output.line_items {
         if item.flags.is_empty() {
             continue;
         }
@@ -135,11 +135,37 @@ fn main() {
     if flag_count == 0 {
         println!("No flags detected — this bill is clean.");
     } else {
-        println!("Total: {} flag(s) detected across {} line item(s).", flag_count, result.line_item_count());
+        println!("Total: {} flag(s) detected across {} line item(s).", flag_count, output.line_items.len());
     }
 
-    // Demonstrate serde serialization for Python backend integration
-    println!("\n--- JSON Output (for Python backend) ---\n");
-    let json = serde_json::to_string_pretty(&result).expect("serialization failed");
-    println!("{}", json);
+    // Demonstrate the HTTP round-trip path: build a full ParsedBill-like
+    // JSON document with extra fields and verify they survive intact.
+    println!("\n--- HTTP Round-Trip (opaque JSON pass-through) ---\n");
+    let doc = json!({
+        "document_id": "demo-bill-001",
+        "status": "letter_ready",
+        "patient": {"name": "Jane Doe", "member_id": "M123"},
+        "provider": {"name": "Memorial Hospital", "npi": "1234567893"},
+        "payer": {"name": "Acme Insurance", "claim_number": "GX-2025-883241"},
+        "line_items": [
+            {"id": "LI-1", "description": "ER visit", "cpt_hcpcs": "99284",
+             "charge_amount": 1240.0, "allowed_amount": 800.0,
+             "paid_amount": 650.0, "patient_responsibility": 150.0},
+            {"id": "LI-2", "description": "ER visit (dup)", "cpt_hcpcs": "99284",
+             "charge_amount": 1240.0, "allowed_amount": 800.0,
+             "paid_amount": 650.0, "patient_responsibility": 150.0}
+        ],
+        "totals": {"billed": 2480.0, "allowed": 1600.0},
+        "letter": {"status": "draft", "content_markdown": "# Appeal"},
+        "audit": {"extraction_engine": "mock-v1"}
+    });
+
+    let enriched = bill_rules::apply_rules_to_document(doc).expect("round-trip failed");
+    println!("patient: {}", enriched["patient"]["name"]);
+    println!("provider NPI: {}", enriched["provider"]["npi"]);
+    println!("letter status: {}", enriched["letter"]["status"]);
+    println!("audit engine: {}", enriched["audit"]["extraction_engine"]);
+    println!("total flags on item 1: {}", enriched["line_items"][0]["flags"].as_array().unwrap().len());
+    println!("total flags on item 2: {}", enriched["line_items"][1]["flags"].as_array().unwrap().len());
+    println!("\nAll unknown fields preserved ✓");
 }

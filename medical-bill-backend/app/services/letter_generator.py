@@ -11,12 +11,21 @@ STRICT_SYSTEM_PROMPT = """You are an expert medical billing advocate. Write a pr
 
 STRICT RULES:
 1. Only use information explicitly present in the structured data provided.
-2. Never invent CPT codes, dollar amounts, dates, claim numbers, member IDs, or provider names.
+2. Never invent CPT codes, dollar amounts, dates, claim numbers, member IDs, provider names, or NPIs.
 3. If a value is missing, omit it — don't use placeholders.
 4. Focus only on the flagged issues.
 5. Be factual, calm, professional. No legal threats.
 6. Output only the letter body in clean Markdown, no code blocks, no commentary.
-7. Start with a "Re:" reference line."""
+7. Start with a "Re:" reference line.
+8. LABELING (required — the letter is programmatically verified against this exact format):
+   - Every procedure code must be written as "CPT <code>" or "HCPCS <code>" —
+     never write a bare code number with no label.
+   - The provider's NPI, if mentioned, must be written as "NPI <number>".
+   - Any denial code, if mentioned, must be written exactly as it appears in
+     the source data (e.g. "CO-97", "PR-1") — don't reformat or abbreviate it.
+   - Do not label unrelated numbers (ZIP codes, phone numbers, ages) as CPT,
+     HCPCS, or NPI under any circumstances — only use those labels for
+     actual procedure codes and the actual provider NPI."""
 
 async def generate_appeal_letter(bill: ParsedBill) -> Letter:
     if not settings.LLM_ENABLED or not settings.LLM_API_KEY:
