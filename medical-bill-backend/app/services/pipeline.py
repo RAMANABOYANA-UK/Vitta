@@ -1,25 +1,23 @@
 """
 Document processing pipeline.
 
-Phase 1 uses a mock pipeline that simulates the full analysis flow:
-  uploaded → processing → analyzed → letter_ready
-
-The pipeline is designed with clear extension points so that later phases can
-swap in the real extraction engine, Rust rules engine, and LLM letter generator
-without changing the API or orchestration contract.
+Clean staged composition:
+1. Extraction + XGBoost scoring (Member 2 or mock)
+2. Deterministic Rust rules engine
+3. Grounded letter generation + verification
 """
+
 import asyncio
 import logging
-from datetime import datetime, timezone
 
 from sqlmodel.ext.asyncio.session import AsyncSession
 
 from app.config import settings
 from app.models import Document
-from app.services.letter_generator import generate_appeal_letter
-from app.services.mock_data import generate_mock_parsed_bill
-from app.services.rules_engine import apply_rules
 from app.schemas import DocumentStatus, ParsedBill
+from app.services.extraction_client import extract_and_score
+from app.services.letter_generator import generate_appeal_letter
+from app.services.rules_engine import apply_rules
 
 logger = logging.getLogger(__name__)
 
@@ -38,7 +36,6 @@ _ALLOWED_TRANSITIONS: dict[str, set[str]] = {
 
 
 def validate_transition(current: str, new: str) -> bool:
-    """Validate that a status transition is allowed."""
     return new in _ALLOWED_TRANSITIONS.get(current, set())
 
 
@@ -48,7 +45,6 @@ async def update_document_status(
     new_status: str,
     error_message: str | None = None,
 ) -> Document:
-    """Update a document's status with transition validation."""
     if not validate_transition(document.status, new_status):
         logger.warning(
             "Invalid status transition for %s: %s -> %s",
@@ -56,9 +52,7 @@ async def update_document_status(
             document.status,
             new_status,
         )
-        raise ValueError(
-            f"Invalid status transition: {document.status} -> {new_status}"
-        )
+        raise ValueError(f"Invalid status transition: {document.status} -> {new_status}")
 
     document.status = new_status
     document.error_message = error_message
@@ -71,47 +65,37 @@ async def update_document_status(
 
 async def run_pipeline(document_id: str, original_filename: str) -> ParsedBill:
     """
-    Run the (mock) analysis pipeline for a document.
+    Pure pipeline composition.
 
-    This function performs the simulated work and returns the final ParsedBill.
-    The document status transitions are handled by the caller (the upload route
-    that spawned this task) to keep the pipeline pure and easily testable.
-
-    Extension points:
-      - Replace the mock generator with the real OCR/extraction engine.
-      - Invoke the Rust rules engine before building the prediction.
-      - Use a real LLM for the appeal letter.
+    Stages:
+    1. Extraction + XGBoost scoring (Member 2 or mock)
+    2. Rust deterministic rules
+    3. Grounded letter generation + verification
     """
     logger.info("Pipeline started for document %s", document_id)
 
-    # Simulate extraction + rules engine + letter generation work
-    await asyncio.sleep(settings.PIPELINE_DELAY_SECONDS)
+    # Optional artificial delay for demo realism
+    if settings.PIPELINE_DELAY_SECONDS > 0:
+        await asyncio.sleep(settings.PIPELINE_DELAY_SECONDS)
 
-    if settings.MOCK_PIPELINE:
-        result = generate_mock_parsed_bill(
-            document_id=document_id,
-            original_filename=original_filename,
-            uploaded_at=datetime.now(timezone.utc),
-        )
-    else:
-        # Real pipeline placeholder — this is where the actual extraction
-        # service would be invoked in a later phase.
-        raise NotImplementedError(
-            "Real extraction pipeline not yet implemented. "
-            "Set MOCK_PIPELINE=true to use the mock pipeline."
-        )
+    # Stage 1: Extraction + scoring
+    result = await extract_and_score(
+        document_id=document_id,
+        original_filename=original_filename,
+    )
 
-    # Apply deterministic rules from the Rust engine
+    # Stage 2: Deterministic rules (Rust)
     result = await apply_rules(result)
 
-    # Generate a grounded + verified appeal letter
+    # Stage 3: Grounded letter + verification
     result.letter = await generate_appeal_letter(result)
 
+    total_flags = sum(len(item.flags) for item in result.line_items)
     logger.info(
-        "Pipeline completed for document %s: %d line items, %d denials, %d flags",
+        "Pipeline completed | document_id=%s | line_items=%d | flags=%d | letter_status=%s",
         document_id,
         len(result.line_items),
-        len(result.denial_codes),
-        sum(len(i.flags) for i in result.line_items),
+        total_flags,
+        result.letter.status if result.letter else None,
     )
     return result
