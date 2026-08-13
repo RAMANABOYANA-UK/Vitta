@@ -104,9 +104,19 @@ class DocumentDetailResponse(DocumentResponse):
 
 
 class LetterUpdateRequest(BaseModel):
-    """Request body for PATCH /documents/{id}/letter."""
+    """Request body for PATCH /documents/{id}/letter.
 
-    content_markdown: str = Field(..., min_length=1)
+    The server re-verifies the submitted letter against the underlying
+    bill facts on every edit, so the content is constrained to be
+    non-empty and of a reasonable maximum length.
+    """
+
+    content_markdown: str = Field(
+        ...,
+        min_length=1,
+        max_length=64_000,
+        description="Updated letter content in markdown format",
+    )
 
 
 class HealthResponse(BaseModel):
