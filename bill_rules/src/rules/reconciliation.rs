@@ -1,97 +1,92 @@
-use crate::types::{Flag, ParsedBill, Severity};
+use crate::types::{Flag, LineItem, Totals};
 
-/// Rule ID for line-item math reconciliation errors.
+/// Rule ID for line-item amount mismatch (allowed − paid ≠ patient resp).
 const RULE_MATH_RECON: &str = "MATH-RECON-001";
-/// Rule ID for totals mismatch.
-const RULE_TOTAL_MISMATCH: &str = "TOTAL-RECON-002";
+/// Rule ID for paid exceeding allowed.
+const RULE_PAID_EXCEEDS_ALLOWED: &str = "MATH-PAID-EXCEEDS-003";
+/// Rule ID for totals mismatch (sum of line items ≠ stated total).
+const RULE_TOTAL_MISMATCH: &str = "MATH-RECON-TOTALS-001";
 /// Tolerance in dollars for float comparisons (5 cents).
-const MONEY_TOLERANCE: f64 = 0.05;
+const TOLERANCE_CENTS: f64 = 0.05;
+/// Tolerance in dollars for totals reconciliation (billed vs sum of items).
+const TOTALS_TOLERANCE: f64 = 1.0;
 
 /// Check amount reconciliation on each line item.
 ///
 /// For each item with allowed, paid, and patient responsibility amounts,
-/// verify that: `patient_responsibility ≈ allowed - paid` (non-negative).
-///
-/// Also checks that the sum of line-item charges matches the billed total.
-pub fn check_amount_reconciliation(bill: &mut ParsedBill) {
-    for item in bill.line_items.iter_mut() {
-        if let (Some(allowed), Some(paid), Some(patient_resp)) = (
-            item.allowed_amount,
-            item.paid_amount,
-            item.patient_responsibility,
-        ) {
-            let expected_patient = (allowed - paid).max(0.0);
-            let difference = (patient_resp - expected_patient).abs();
+/// verify that `patient_responsibility ≈ max(allowed - paid, 0)`. Also
+/// flags paid exceeding allowed (impossible in practice).
+pub fn check_line_item_reconciliation(line_items: &mut [LineItem]) {
+    for item in line_items.iter_mut() {
+        let (Some(allowed), Some(paid), Some(patient_resp)) =
+            (item.allowed_amount, item.paid_amount, item.patient_responsibility)
+        else {
+            continue;
+        };
 
-            if difference > MONEY_TOLERANCE {
-                item.flags.push(Flag::new(
-                    "math_error",
-                    Severity::High,
-                    format!(
-                        "Amount mismatch: Expected patient responsibility ≈ ${:.2}, found ${:.2} (difference ${:.2})",
-                        expected_patient, patient_resp, difference
-                    ),
-                    RULE_MATH_RECON,
-                ));
-            }
+        let expected_patient = (allowed - paid).max(0.0);
+        let difference = (patient_resp - expected_patient).abs();
 
-            // Paid should never exceed allowed (insurance can't pay more than allowed)
-            if paid > allowed + MONEY_TOLERANCE {
-                item.flags.push(Flag::new(
-                    "math_error",
-                    Severity::Critical,
-                    format!(
-                        "Paid amount ${:.2} exceeds allowed amount ${:.2}",
-                        paid, allowed
-                    ),
-                    "MATH-PAID-EXCEEDS-003",
-                ));
-            }
+        if difference > TOLERANCE_CENTS {
+            item.flags.push(Flag {
+                r#type: "math_error".to_string(),
+                severity: "high".to_string(),
+                message: format!(
+                    "Amount mismatch: allowed (${:.2}) minus paid (${:.2}) should leave ~${:.2} patient responsibility, but the bill shows ${:.2}.",
+                    allowed, paid, expected_patient, patient_resp
+                ),
+                rule_id: Some(RULE_MATH_RECON.to_string()),
+                shap_contribution: None,
+            });
         }
 
-        // Paid amount without allowed amount is suspicious
-        if item.paid_amount.is_some() && item.allowed_amount.is_none() {
-            item.flags.push(Flag::new(
-                "data_quality",
-                Severity::Warning,
-                "Paid amount present but allowed amount missing.",
-                "DQ-PAID-NO-ALLOWED-004",
-            ));
+        if paid > allowed + TOLERANCE_CENTS {
+            item.flags.push(Flag {
+                r#type: "math_error".to_string(),
+                severity: "critical".to_string(),
+                message: format!(
+                    "Paid amount ${:.2} exceeds allowed amount ${:.2} — insurance cannot pay more than the allowed amount.",
+                    paid, allowed
+                ),
+                rule_id: Some(RULE_PAID_EXCEEDS_ALLOWED.to_string()),
+                shap_contribution: None,
+            });
         }
     }
-
-    check_totals(bill);
 }
 
-/// Verify the sum of line-item charges approximately matches the billed total.
-fn check_totals(bill: &mut ParsedBill) {
-    let sum_charges: f64 = bill.line_items.iter().map(|i| i.charge_amount).sum();
-    let difference = (sum_charges - bill.totals.billed).abs();
+/// Check that the sum of line-item charges roughly matches the billed total.
+///
+/// Returns `Some(Flag)` to be attached at the document level (the caller
+/// decides where to attach it — currently the first line item, since the
+/// Python `ParsedBill` schema has no separate document-level flags field).
+pub fn check_totals_reconciliation(line_items: &[LineItem], totals: &Totals) -> Option<Flag> {
+    let sum_charges: f64 = line_items.iter().map(|i| i.charge_amount).sum();
+    let difference = (sum_charges - totals.billed).abs();
 
-    if difference > 1.0 {
-        // Bill-level flag — attach to the first line item so the Python backend
-        // can find it easily. In a future iteration we'll add document-level flags.
-        if let Some(first) = bill.line_items.first_mut() {
-            first.flags.push(Flag::new(
-                "math_error",
-                Severity::Critical,
-                format!(
-                    "Totals mismatch: sum of line items ${:.2} != billed total ${:.2} (difference ${:.2})",
-                    sum_charges, bill.totals.billed, difference
-                ),
-                RULE_TOTAL_MISMATCH,
-            ));
-        }
+    if difference > TOTALS_TOLERANCE {
+        Some(Flag {
+            r#type: "math_error".to_string(),
+            severity: "medium".to_string(),
+            message: format!(
+                "Line items sum to ${:.2}, but the bill's stated total is ${:.2} (difference ${:.2}).",
+                sum_charges, totals.billed, difference
+            ),
+            rule_id: Some(RULE_TOTAL_MISMATCH.to_string()),
+            shap_contribution: None,
+        })
+    } else {
+        None
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::types::{LineItem, Totals};
 
     fn make_item(
         id: &str,
+        cpt: &str,
         charge: f64,
         allowed: Option<f64>,
         paid: Option<f64>,
@@ -100,8 +95,8 @@ mod tests {
         LineItem {
             id: id.to_string(),
             page: 1,
-            description: "Test service".to_string(),
-            cpt_hcpcs: Some("99285".to_string()),
+            description: format!("Service {}", cpt),
+            cpt_hcpcs: Some(cpt.to_string()),
             icd10: vec![],
             units: 1.0,
             charge_amount: charge,
@@ -110,133 +105,77 @@ mod tests {
             patient_responsibility: patient_resp,
             modifiers: vec![],
             flags: vec![],
+            service_date: None,
         }
     }
 
     #[test]
-    fn flags_math_error_when_patient_resp_is_wrong() {
-        // allowed=100, paid=80 → expected patient_resp = 20
-        let mut bill = ParsedBill {
-            document_id: "test".to_string(),
-            status: "processing".to_string(),
-            service_date: None,
-            line_items: vec![make_item("1", 100.0, Some(100.0), Some(80.0), Some(30.0))],
-            totals: Totals {
-                billed: 100.0,
-                allowed: Some(100.0),
-                insurance_paid: Some(80.0),
-                patient_responsibility: Some(30.0),
-                potential_savings: None,
-            },
-        };
-
-        check_amount_reconciliation(&mut bill);
-
-        let math_flags = bill.flags_of_type("math_error");
-        assert!(
-            !math_flags.is_empty(),
-            "expected math_error flag for incorrect patient responsibility"
-        );
-        assert_eq!(math_flags[0].rule_id.as_deref(), Some(RULE_MATH_RECON));
+    fn flags_amount_mismatch() {
+        // allowed 100, paid 80 → expected patient 20, but bill shows 30.
+        let mut items = vec![make_item("1", "99285", 100.0, Some(100.0), Some(80.0), Some(30.0))];
+        check_line_item_reconciliation(&mut items);
+        assert_eq!(items[0].flags.len(), 1);
+        let f = &items[0].flags[0];
+        assert_eq!(f.rule_id.as_deref(), Some(RULE_MATH_RECON));
+        assert_eq!(f.severity, "high");
+        assert!(f.message.contains("$20.00"));
     }
 
     #[test]
     fn no_flag_when_math_is_correct() {
-        let mut bill = ParsedBill {
-            document_id: "test".to_string(),
-            status: "processing".to_string(),
-            service_date: None,
-            line_items: vec![make_item("1", 100.0, Some(100.0), Some(80.0), Some(20.0))],
-            totals: Totals {
-                billed: 100.0,
-                allowed: Some(100.0),
-                insurance_paid: Some(80.0),
-                patient_responsibility: Some(20.0),
-                potential_savings: None,
-            },
-        };
-
-        check_amount_reconciliation(&mut bill);
-
-        assert_eq!(bill.total_flags(), 0, "no flags expected for correct math");
+        let mut items = vec![make_item("1", "99285", 100.0, Some(100.0), Some(80.0), Some(20.0))];
+        check_line_item_reconciliation(&mut items);
+        assert!(items[0].flags.is_empty());
     }
 
     #[test]
-    fn flags_when_paid_exceeds_allowed() {
-        // paid=120 > allowed=100 — impossible in practice
-        let mut bill = ParsedBill {
-            document_id: "test".to_string(),
-            status: "processing".to_string(),
-            service_date: None,
-            line_items: vec![make_item("1", 100.0, Some(100.0), Some(120.0), Some(0.0))],
-            totals: Totals {
-                billed: 100.0,
-                allowed: Some(100.0),
-                insurance_paid: Some(120.0),
-                patient_responsibility: Some(0.0),
-                potential_savings: None,
-            },
-        };
+    fn no_flag_when_amounts_missing() {
+        let mut items = vec![make_item("1", "99285", 100.0, None, None, None)];
+        check_line_item_reconciliation(&mut items);
+        assert!(items[0].flags.is_empty());
+    }
 
-        check_amount_reconciliation(&mut bill);
-
-        assert_eq!(bill.total_flags(), 1, "expected one math_error flag");
-        assert!(
-            bill.flags_of_type("math_error")[0]
-                .message
-                .contains("exceeds allowed"),
-            "message should mention paid exceeds allowed"
-        );
+    #[test]
+    fn flags_paid_exceeds_allowed() {
+        let mut items = vec![make_item("1", "99285", 100.0, Some(100.0), Some(120.0), Some(0.0))];
+        check_line_item_reconciliation(&mut items);
+        assert_eq!(items[0].flags.len(), 1);
+        let f = &items[0].flags[0];
+        assert_eq!(f.rule_id.as_deref(), Some(RULE_PAID_EXCEEDS_ALLOWED));
+        assert_eq!(f.severity, "critical");
     }
 
     #[test]
     fn flags_totals_mismatch() {
-        // Line items sum to 150, but totals.billed = 175
-        let mut bill = ParsedBill {
-            document_id: "test".to_string(),
-            status: "processing".to_string(),
-            service_date: None,
-            line_items: vec![
-                make_item("1", 100.0, None, None, None),
-                make_item("2", 50.0, None, None, None),
-            ],
-            totals: Totals {
-                billed: 175.0,
-                allowed: None,
-                insurance_paid: None,
-                patient_responsibility: None,
-                potential_savings: None,
-            },
+        let items = vec![
+            make_item("1", "99285", 100.0, None, None, None),
+            make_item("2", "80053", 50.0, None, None, None),
+        ];
+        let totals = Totals {
+            billed: 175.0,
+            ..Default::default()
         };
+        let flag = check_totals_reconciliation(&items, &totals).expect("should flag");
+        assert_eq!(flag.rule_id.as_deref(), Some(RULE_TOTAL_MISMATCH));
+        assert!(flag.message.contains("$150.00"));
+    }
 
-        check_amount_reconciliation(&mut bill);
-
-        assert_eq!(bill.total_flags(), 1);
-        assert_eq!(
-            bill.flags_of_type("math_error")[0].rule_id.as_deref(),
-            Some(RULE_TOTAL_MISMATCH)
-        );
+    #[test]
+    fn no_flag_when_totals_match() {
+        let items = vec![make_item("1", "99285", 100.0, None, None, None)];
+        let totals = Totals {
+            billed: 100.0,
+            ..Default::default()
+        };
+        assert!(check_totals_reconciliation(&items, &totals).is_none());
     }
 
     #[test]
     fn tolerates_cent_level_rounding() {
-        // 100.00 - 89.99 = 10.01 but patient_resp = 10.00 (rounding diff < 5c)
-        let mut bill = ParsedBill {
-            document_id: "test".to_string(),
-            status: "processing".to_string(),
-            service_date: None,
-            line_items: vec![make_item("1", 100.0, Some(100.0), Some(89.99), Some(10.00))],
-            totals: Totals {
-                billed: 100.0,
-                allowed: Some(100.0),
-                insurance_paid: Some(89.99),
-                patient_responsibility: Some(10.00),
-                potential_savings: None,
-            },
-        };
-
-        check_amount_reconciliation(&mut bill);
-
-        assert_eq!(bill.total_flags(), 0, "cent-level rounding should be tolerated");
+        // allowed 100, paid 89.99 → expected patient 10.01, bill shows 10.00
+        // (0.01 diff < 0.05 tolerance → no flag).
+        let mut items = vec![make_item("1", "99285", 100.0, Some(100.0), Some(89.99), Some(10.00))];
+        check_line_item_reconciliation(&mut items);
+        assert!(items[0].flags.is_empty());
     }
 }

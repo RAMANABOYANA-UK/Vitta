@@ -1,0 +1,861 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="description" content="Vitta App — AI Medical Bill & Insurance Claim Navigator. Upload your bill, detect overcharges, and draft appeals." />
+  <title>Vitta — App</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="css/styles.css" />
+  <link rel="stylesheet" href="css/app.css" />
+  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%230d9488'/%3E%3Cpath d='M10 16l4 4 8-9' stroke='white' stroke-width='3' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E" />
+</head>
+<body class="app-body">
+
+  <div class="app-shell">
+
+    <!-- ================= SIDEBAR ================= -->
+    <aside class="sidebar">
+      <a href="index.html" class="sidebar-brand">
+        <span class="brand-logo">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l7 4v5c0 4.6-3 7.6-7 9-4-1.4-7-4.4-7-9V7l7-4z"/><path d="M9 12l2 2 4-4.5"/></svg>
+        </span>
+        <span class="brand-text">Vit<em>ta</em></span>
+      </a>
+
+      <div class="workspace-pill">
+        <div style="min-width:0;">
+          <div class="wp-label">Workspace</div>
+          <div class="wp-name">My Claims</div>
+        </div>
+        <button class="wp-btn" title="Switch workspace" aria-label="Switch workspace">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"/></svg>
+        </button>
+      </div>
+
+      <nav class="sidebar-nav" aria-label="App navigation">
+        <div class="nav-section">Main</div>
+        <button class="nav-item active" data-page="welcome">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
+          <span class="nav-label">Home</span>
+        </button>
+        <button class="nav-item" data-page="overview">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="9" rx="1"/><rect x="14" y="3" width="7" height="5" rx="1"/><rect x="14" y="12" width="7" height="9" rx="1"/><rect x="3" y="16" width="7" height="5" rx="1"/></svg>
+          <span class="nav-label">Overview</span>
+        </button>
+        <button class="nav-item" data-page="bill">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/><path d="M16 13H8M16 17H8M10 9H8"/></svg>
+          <span class="nav-label">Bill detail</span>
+        </button>
+        <button class="nav-item" data-page="issues">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 9v4M12 17h.01"/><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/></svg>
+          <span class="nav-label">Issues found</span>
+          <span class="nav-count alert" id="navIssueCount">0</span>
+        </button>
+        <button class="nav-item" data-page="appeal">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
+          <span class="nav-label">Appeal</span>
+          <span class="nav-count" id="navAppealBadge" hidden>New</span>
+        </button>
+        <button class="nav-item" data-page="actions">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 3"/></svg>
+          <span class="nav-label">Action tracker</span>
+          <span class="nav-count" id="navActionCount">0</span>
+        </button>
+
+        <div class="nav-section">Resources</div>
+        <button class="nav-item" data-page="glossary">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>
+          <span class="nav-label">Code glossary</span>
+        </button>
+        <button class="nav-item" data-page="settings">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+          <span class="nav-label">Settings</span>
+        </button>
+      </nav>
+
+      <div class="sidebar-foot">
+        <div class="upgrade-card">
+          <p>Unlock unlimited appeals, batch analysis & priority support.</p>
+          <a href="#" class="btn btn-primary btn-sm" id="upgradeBtn">Upgrade to Plus</a>
+        </div>
+        <div class="user-row">
+          <span class="avatar a1">AS</span>
+          <div>
+            <strong>Alex Sharma</strong>
+            <span>Free plan · 2 scans left</span>
+          </div>
+        </div>
+      </div>
+    </aside>
+
+    <!-- ================= MAIN ================= -->
+    <div class="app-main">
+
+      <!-- Topbar -->
+      <header class="app-topbar">
+        <div>
+          <div class="topbar-title" id="topbarTitle">Welcome back, Alex</div>
+          <div class="topbar-sub" id="topbarSub">Let's find out if your bill is correct.</div>
+        </div>
+        <div class="topbar-actions">
+          <div class="search-box">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+            <input type="text" placeholder="Search codes, claims…" aria-label="Search" />
+          </div>
+          <button class="icon-btn" title="Notifications" aria-label="Notifications">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
+            <span class="dot-badge"></span>
+          </button>
+          <button class="icon-btn" title="Help" aria-label="Help">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+          </button>
+        </div>
+      </header>
+
+      <main class="app-content">
+
+        <!-- ============ WELCOME / UPLOAD ============ -->
+        <section class="page-section active" id="page-welcome">
+          <div class="welcome-hero">
+            <h1>Your bill is probably wrong. Let's prove it.</h1>
+            <p>Upload your medical bill or Explanation of Benefits. Vitta's AI will decode every code, flag overcharges, and show you exactly what to do next.</p>
+            <a href="#" class="btn btn-white" id="heroUploadBtn">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+              Upload a bill
+            </a>
+          </div>
+
+          <!-- Upload zone -->
+          <div class="upload-zone" id="uploadZone" role="button" tabindex="0" aria-label="Upload a bill or EOB">
+            <input type="file" class="file-input" id="fileInput" accept=".pdf,.png,.jpg,.jpeg,.webp" />
+            <div class="upload-icon">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+            </div>
+            <h3>Drag & drop your bill or EOB here</h3>
+            <p>or click to browse — PDF, JPG, PNG, or a photo from your phone</p>
+            <span class="btn btn-primary">Choose file</span>
+            <div class="upload-hint">
+              <span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg> Encrypted upload</span>
+              <span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg> Multi-page PDFs supported</span>
+              <span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg> Free for your first 3 bills</span>
+            </div>
+          </div>
+
+          <!-- Upload error state (inline) -->
+          <div class="upload-error" id="uploadError" hidden>
+            <span class="ue-icon">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 9v4M12 17h.01"/><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/></svg>
+            </span>
+            <div>
+              <strong id="uploadErrorTitle">Upload failed</strong>
+              <p id="uploadErrorMsg"></p>
+            </div>
+            <button class="btn btn-secondary btn-sm" id="uploadErrorRetry">Try again</button>
+          </div>
+
+          <!-- Camera capture -->
+          <div class="camera-row">
+            <button class="btn btn-secondary btn-sm" id="cameraBtn">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
+              Take a photo with camera
+            </button>
+            <input type="file" class="file-input" id="cameraInput" accept="image/*" capture="environment" />
+          </div>
+
+          <div style="margin-top:32px;">
+            <div class="section-tag" style="margin-bottom:16px;">No bill handy? Try a sample</div>
+            <div class="sample-cards">
+              <button class="sample-card" data-sample="er">
+                <span class="sc-icon teal">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l7 4v5c0 4.6-3 7.6-7 9-4-1.4-7-4.4-7-9V7l7-4z"/><path d="M9 12l2 2 4-4.5"/></svg>
+                </span>
+                <strong>Emergency room visit</strong>
+                <p>ER bill with upcoding, unbundling, and a duplicate lab charge. Multi-page.</p>
+                <span class="sc-cta">Analyze sample <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M12 5l7 7-7 7"/></svg></span>
+              </button>
+              <button class="sample-card" data-sample="clean">
+                <span class="sc-icon indigo">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+                </span>
+                <strong>Clean clinic visit</strong>
+                <p>A simple, correct bill with zero flags — see the reassuring empty state.</p>
+                <span class="sc-cta">Analyze sample <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M12 5l7 7-7 7"/></svg></span>
+              </button>
+            </div>
+          </div>
+
+          <div class="security-strip">
+            <span class="sec-item">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l7 4v5c0 4.6-3 7.6-7 9-4-1.4-7-4.4-7-9V7l7-4z"/><path d="M9 12l2 2 4-4.5"/></svg>
+              HIPAA-aligned encryption
+            </span>
+            <span class="sec-item">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+              Your data is never sold
+            </span>
+            <span class="sec-item">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+              Delete everything anytime
+            </span>
+          </div>
+        </section>
+
+        <!-- ============ SCAN / PIPELINE STATUS ============ -->
+        <section class="page-section" id="page-scan">
+          <div class="scan-progress">
+            <div class="scan-ring">
+              <svg viewBox="0 0 42 42">
+                <circle class="track" cx="21" cy="21" r="16.5"></circle>
+                <circle class="fill" id="scanRingFill" cx="21" cy="21" r="16.5" stroke-dasharray="103.67" stroke-dashoffset="103.67"></circle>
+              </svg>
+              <div class="scan-label">
+                <strong id="scanPct">0%</strong>
+                <span id="scanPhaseLabel">uploading</span>
+              </div>
+            </div>
+            <h3 id="scanTitle">Uploading your bill…</h3>
+            <p id="scanSub">The pipeline runs multiple AI services. Stages complete independently — results stream in as they land.</p>
+
+            <!-- Stage list (per-stage status) -->
+            <div class="scan-steps" id="scanStages">
+              <div class="scan-step" data-stage="preprocessing">
+                <span class="step-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg></span>
+                <div class="stage-body">
+                  <div class="stage-title">Preprocessing</div>
+                  <div class="stage-sub">Deskew, denoise & contrast enhancement</div>
+                </div>
+                <div class="stage-status" data-status></div>
+              </div>
+              <div class="scan-step" data-stage="ocr_running">
+                <span class="step-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg></span>
+                <div class="stage-body">
+                  <div class="stage-title">OCR running</div>
+                  <div class="stage-sub">Textract / Document AI reading text + layout JSON</div>
+                </div>
+                <div class="stage-status" data-status></div>
+              </div>
+              <div class="scan-step" data-stage="extraction_running">
+                <span class="step-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/><path d="M16 13H8M16 17H8M10 9H8"/></svg></span>
+                <div class="stage-body">
+                  <div class="stage-title">Extraction running</div>
+                  <div class="stage-sub">Mapping line items to ParsedBill schema</div>
+                </div>
+                <div class="stage-status" data-status></div>
+              </div>
+              <div class="scan-step" data-stage="validation_running">
+                <span class="step-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg></span>
+                <div class="stage-body">
+                  <div class="stage-title">Validation running</div>
+                  <div class="stage-sub">Rules engine: duplicates, unbundling, arithmetic checks</div>
+                </div>
+                <div class="stage-status" data-status></div>
+              </div>
+              <div class="scan-step" data-stage="ml_scoring_running">
+                <span class="step-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg></span>
+                <div class="stage-body">
+                  <div class="stage-title">ML scoring running</div>
+                  <div class="stage-sub">Anomaly detection + calibrated appeal probability</div>
+                </div>
+                <div class="stage-status" data-status></div>
+              </div>
+            </div>
+
+            <!-- Stage skeleton overlay (per-stage loading) -->
+            <div class="stage-skeleton" id="stageSkeleton" hidden>
+              <div class="skeleton-line w80"></div>
+              <div class="skeleton-line w60"></div>
+              <div class="skeleton-line w90"></div>
+            </div>
+
+            <!-- Pipeline failure state -->
+            <div class="pipeline-error" id="pipelineError" hidden>
+              <span class="pe-icon">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 9v4M12 17h.01"/><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/></svg>
+              </span>
+              <div>
+                <strong id="pipelineErrorTitle">Pipeline failed</strong>
+                <p id="pipelineErrorMsg"></p>
+              </div>
+              <div class="pe-actions">
+                <button class="btn btn-secondary btn-sm" id="pipelineRetryBtn">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><polyline points="3 3 3 8 8 8"/></svg>
+                  Retry
+                </button>
+                <button class="btn btn-secondary btn-sm" id="pipelineCancelBtn">Upload another</button>
+              </div>
+            </div>
+
+            <button class="btn btn-secondary btn-sm" id="viewPartialResultsBtn" hidden>
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+              View partial results
+            </button>
+          </div>
+        </section>
+
+        <!-- ============ OVERVIEW ============ -->
+        <section class="page-section" id="page-overview">
+          <div class="page-header">
+            <div>
+              <h1>Claim overview</h1>
+              <p id="overviewSub">Everything Vitta found on your bill, at a glance.</p>
+            </div>
+            <div class="page-actions">
+              <a href="#" class="btn btn-secondary btn-sm" id="viewBillBtn">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/></svg>
+                View full bill
+              </a>
+              <a href="#" class="btn btn-primary btn-sm" id="goAppealBtn">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
+                Draft appeal
+              </a>
+            </div>
+          </div>
+
+          <!-- Low-confidence extraction warning banner -->
+          <div class="warning-banner" id="extractionWarningBanner" hidden>
+            <span class="wb-icon">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l9 16H3l9-16z"/><path d="M12 10v4M12 17h.01"/></svg>
+            </span>
+            <div id="extractionWarningText"></div>
+          </div>
+
+          <!-- Per-stage loading skeleton (partial results) -->
+          <div class="kpi-grid" id="kpiSkeleton" hidden>
+            <div class="kpi-card skeleton-card"><div class="skeleton-line w40"></div><div class="skeleton-line w70 skeleton-lg"></div></div>
+            <div class="kpi-card skeleton-card"><div class="skeleton-line w40"></div><div class="skeleton-line w70 skeleton-lg"></div></div>
+            <div class="kpi-card skeleton-card"><div class="skeleton-line w40"></div><div class="skeleton-line w70 skeleton-lg"></div></div>
+            <div class="kpi-card skeleton-card"><div class="skeleton-line w40"></div><div class="skeleton-line w70 skeleton-lg"></div></div>
+          </div>
+
+          <div class="kpi-grid" id="kpiGrid" hidden>
+            <div class="kpi-card teal-tint">
+              <div class="kpi-label"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 1v22M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg> Total billed</div>
+              <div class="kpi-value" id="kpiBilled">—</div>
+              <div class="kpi-note" id="kpiLineNote"></div>
+            </div>
+            <div class="kpi-card red-tint">
+              <div class="kpi-label"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 9v4M12 17h.01"/><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/></svg> Flagged amount</div>
+              <div class="kpi-value" id="kpiOvercharge">—</div>
+              <div class="kpi-note" id="kpiIssueNote"></div>
+            </div>
+            <div class="kpi-card amber-tint">
+              <div class="kpi-label"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg> Patient responsibility</div>
+              <div class="kpi-value" id="kpiPatientResp">—</div>
+              <div class="kpi-note">Total you may owe</div>
+            </div>
+            <div class="kpi-card blue-tint">
+              <div class="kpi-label"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg> Appeal success chance</div>
+              <div class="kpi-value" id="kpiChance">—</div>
+              <div class="kpi-note" id="kpiChanceNote"></div>
+            </div>
+          </div>
+
+          <div class="overview-grid">
+            <div class="dash-card accent-issue">
+              <h3><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 9v4M12 17h.01"/><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/></svg> Issues detected</h3>
+              <div class="issue-list" id="overviewIssues">
+                <div class="empty-inline" id="overviewIssuesEmpty" hidden>
+                  <span class="ei-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></span>
+                  <p>No billing issues found. This bill looks correct.</p>
+                </div>
+              </div>
+            </div>
+
+            <div class="dash-card">
+              <h3><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 3"/></svg> Next actions</h3>
+              <div class="action-list" id="overviewActions"></div>
+            </div>
+          </div>
+
+          <div class="dash-card">
+            <h3><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg> Appeal outlook</h3>
+            <div class="appeal-box">
+              <div class="appeal-gauge">
+                <svg viewBox="0 0 42 42">
+                  <defs>
+                    <linearGradient id="appealGrad" x1="0%" y1="0%" x2="100%" y2="0%">
+                      <stop offset="0%" stop-color="#0d9488"/>
+                      <stop offset="100%" stop-color="#2dd4bf"/>
+                    </linearGradient>
+                  </defs>
+                  <circle class="track" cx="21" cy="21" r="16.5"></circle>
+                  <circle class="fill" id="appealGaugeFill" cx="21" cy="21" r="16.5" stroke-dasharray="103.67" stroke-dashoffset="103.67"></circle>
+                </svg>
+                <div class="gauge-center">
+                  <strong id="gaugeValue">—</strong>
+                  <span>success</span>
+                </div>
+              </div>
+              <div class="appeal-facts" id="appealFacts">
+                <div class="skeleton-line w80"></div>
+                <div class="skeleton-line w60"></div>
+                <div class="skeleton-line w70"></div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- ============ BILL DETAIL ============ -->
+        <section class="page-section" id="page-bill">
+          <div class="page-header">
+            <div>
+              <h1>Bill detail</h1>
+              <p>Every line item, decoded and explained. Each field links back to its source region.</p>
+            </div>
+            <div class="page-actions">
+              <a href="#" class="btn btn-secondary btn-sm" id="downloadBillBtn">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                Download PDF
+              </a>
+            </div>
+          </div>
+
+          <!-- Low-confidence extraction warning banner -->
+          <div class="warning-banner" id="billWarningBanner" hidden>
+            <span class="wb-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l9 16H3l9-16z"/><path d="M12 10v4M12 17h.01"/></svg></span>
+            <div id="billWarningText"></div>
+          </div>
+
+          <!-- Document-level metadata block -->
+          <div class="bill-header-card">
+            <div class="bill-header-grid">
+              <div class="bill-header-item">
+                <span>Provider <span class="meta-badge">NPI</span></span>
+                <strong id="billProvider">—</strong>
+                <div class="meta-verif" data-billfield="provider"></div>
+              </div>
+              <div class="bill-header-item">
+                <span>Payer</span>
+                <strong id="billPayer">—</strong>
+                <div class="meta-verif" data-billfield="payer"></div>
+              </div>
+              <div class="bill-header-item">
+                <span>Statement date</span>
+                <strong id="billStatementDate">—</strong>
+                <div class="meta-verif" data-billfield="statementDate"></div>
+              </div>
+              <div class="bill-header-item">
+                <span>Account ref</span>
+                <strong id="billAccountRef">—</strong>
+                <div class="meta-verif" data-billfield="accountRef"></div>
+              </div>
+              <div class="bill-header-item">
+                <span>Member</span>
+                <strong id="billMember">—</strong>
+                <div class="meta-verif" data-billfield="memberName"></div>
+              </div>
+              <div class="bill-header-item">
+                <span>Member ID</span>
+                <strong id="billMemberId">—</strong>
+                <div class="meta-verif" data-billfield="memberId"></div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Totals reconciliation strip -->
+          <div class="recon-strip" id="reconStrip">
+            <div class="recon-item">
+              <span class="recon-label">Billed total</span>
+              <strong id="reconBilled">—</strong>
+            </div>
+            <div class="recon-arrow"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M12 5l7 7-7 7"/></svg></div>
+            <div class="recon-item">
+              <span class="recon-label">Allowed total</span>
+              <strong id="reconAllowed">—</strong>
+            </div>
+            <div class="recon-item">
+              <span class="recon-label">Paid total</span>
+              <strong id="reconPaid">—</strong>
+            </div>
+            <div class="recon-item">
+              <span class="recon-label">Patient responsibility</span>
+              <strong id="reconPatient">—</strong>
+            </div>
+            <div class="recon-status" id="reconStatus"></div>
+          </div>
+
+          <!-- Multi-page document navigator + side-by-side source viewer -->
+          <div class="doc-viewer">
+            <div class="doc-viewer-left">
+              <div class="doc-page-nav" id="docPageNav"></div>
+              <div class="page-thumbnails" id="pageThumbnails"></div>
+            </div>
+            <div class="doc-viewer-main">
+              <div class="doc-page-wrap">
+                <img id="docPageImage" alt="Source document page" />
+                <!-- Overlay boxes drawing bounding boxes for verified/newly-selected line items -->
+                <div class="bbox-canvas" id="bboxCanvas"></div>
+              </div>
+              <div class="doc-page-caption" id="docPageCaption"></div>
+            </div>
+            <div class="doc-viewer-right">
+              <div class="dvr-head">
+                <strong>Original document</strong>
+                <span class="dvr-badge">provenance</span>
+              </div>
+              <p>Click any line item or flagged region to see it highlighted on the source page.</p>
+              <div class="dvr-tip">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 9v4M12 17h.01"/><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/></svg>
+                Every extracted field has a bounding-box pointer back to this document.
+              </div>
+              <div class="dvr-fields" id="dvrFields"></div>
+            </div>
+          </div>
+
+          <div class="tabs" role="tablist">
+            <button class="tab-btn active" data-tab="lineitems" role="tab">Line items <span class="tab-count" id="tabLineCount">0</span></button>
+            <button class="tab-btn" data-tab="explanations" role="tab">Plain-language <span class="tab-count" id="tabExplainCount">0</span></button>
+          </div>
+
+          <!-- Line items table (per-field verification) -->
+          <div class="tab-pane active" id="tab-lineitems">
+            <div class="table-wrap">
+              <table class="data-table bill-data-table">
+                <thead>
+                  <tr>
+                    <th>Date <span class="th-badge">verified</span></th>
+                    <th>CPT / HCPCS</th>
+                    <th>Description</th>
+                    <th>ICD-10</th>
+                    <th>Units</th>
+                    <th>Mod</th>
+                    <th>Charge</th>
+                    <th>Allowed</th>
+                    <th>Paid</th>
+                    <th class="num">Patient resp.</th>
+                  </tr>
+                </thead>
+                <tbody id="lineItemsBody"></tbody>
+              </table>
+            </div>
+          </div>
+
+          <div class="tab-pane" id="tab-explanations">
+            <div class="explain-list" id="explainList"></div>
+          </div>
+        </section>
+
+        <!-- ============ ISSUES / FLAGS ============ -->
+        <section class="page-section" id="page-issues">
+          <div class="page-header">
+            <div>
+              <h1>Issues found</h1>
+              <p id="issuesSub">Flags from the rules engine and ML anomaly detection.</p>
+            </div>
+            <div class="severity-filter" id="severityFilter">
+              <button class="severity-btn active" data-sev="all">All</button>
+              <button class="severity-btn" data-sev="high">High</button>
+              <button class="severity-btn" data-sev="medium">Medium</button>
+              <button class="severity-btn" data-sev="low">Low</button>
+            </div>
+          </div>
+
+          <!-- Aggregate summary -->
+          <div class="flag-summary" id="flagSummary" hidden>
+            <div class="flag-summary-item">
+              <span class="fs-icon red"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 9v4M12 17h.01"/><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/></svg></span>
+              <div>
+                <strong id="flagTotalAmount">$0</strong>
+                <span>Total flagged amount</span>
+              </div>
+            </div>
+            <div class="flag-summary-item">
+              <span class="fs-icon emerald"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg></span>
+              <div>
+                <strong id="flagRuleCount">0</strong>
+                <span>Rule-based facts</span>
+              </div>
+            </div>
+            <div class="flag-summary-item">
+              <span class="fs-icon blue"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg></span>
+              <div>
+                <strong id="flagMlCount">0</strong>
+                <span>ML-flagged anomalies</span>
+              </div>
+            </div>
+            <div class="flag-summary-legend">
+              <span class="legend-rule"><span class="dot"></span> Rule — deterministic fact</span>
+              <span class="legend-ml"><span class="dot"></span> ML — probability estimate</span>
+            </div>
+          </div>
+
+          <!-- ML scoring pending skeleton -->
+          <div id="mlFlagsSkeleton" class="ml-flags-skeleton">
+            <div class="flag-skeleton-card"><div class="skeleton-line w30"></div><div class="skeleton-line w50"></div><div class="skeleton-line w90"></div></div>
+            <div class="flag-skeleton-card"><div class="skeleton-line w30"></div><div class="skeleton-line w50"></div><div class="skeleton-line w90"></div></div>
+          </div>
+
+          <div id="issuesList"></div>
+
+          <!-- Empty state for a clean bill -->
+          <div class="clean-bill-state" id="cleanBillState" hidden>
+            <span class="cbs-check">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+            </span>
+            <h3>No issues found — this bill looks correct</h3>
+            <p>Vitta checked for duplicate charges, unbundling, arithmetic mismatches, invalid codes, pricing anomalies, and coverage surprises. Nothing was flagged.</p>
+            <div class="cbs-actions">
+              <a href="#" class="btn btn-secondary btn-sm" id="cleanViewBillBtn">Review the full bill</a>
+              <a href="#" class="btn btn-primary btn-sm" id="cleanAppealBtn">See appeal outlook</a>
+            </div>
+          </div>
+        </section>
+
+        <!-- ============ APPEAL ============ -->
+        <section class="page-section" id="page-appeal">
+          <div class="page-header">
+            <div>
+              <h1>Appeal center</h1>
+              <p>Your calibrated success probability, factor breakdown, and a ready-to-edit appeal letter.</p>
+            </div>
+            <div class="page-actions">
+              <a href="#" class="btn btn-secondary btn-sm" id="copyLetterBtn">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+                Copy letter
+              </a>
+              <a href="#" class="btn btn-primary btn-sm" id="downloadLetterBtn">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                Download
+              </a>
+            </div>
+          </div>
+
+          <div class="appeal-layout">
+            <div class="appeal-side">
+              <!-- Score display — wired to calibrated probability -->
+              <div class="appeal-score-card">
+                <div class="asc-label">Predicted success (calibrated)</div>
+                <div class="asc-value" id="ascValue">—</div>
+                <div class="asc-confidence" id="ascConfidence"></div>
+                <div class="asc-note" id="ascNote">Score pending…</div>
+
+                <!-- Confidence interval bar -->
+                <div class="ci-bar" id="ciBar" hidden>
+                  <div class="ci-track">
+                    <div class="ci-range" id="ciRange"></div>
+                    <div class="ci-point" id="ciPoint"></div>
+                  </div>
+                  <div class="ci-labels">
+                    <span id="ciLowLabel">0%</span>
+                    <span id="ciHighLabel">100%</span>
+                  </div>
+                </div>
+
+                <div class="score-bar"><div class="score-bar-fill" id="scoreBarFill" style="width:0%;"></div></div>
+                <div class="asc-model-meta" id="ascModelMeta"></div>
+
+                <!-- Stale / recompute hook -->
+                <div class="score-recompute" id="scoreRecompute" hidden>
+                  <p>You've edited the letter — the score reflects your latest changes.</p>
+                  <button class="btn btn-white btn-sm" id="recomputeScoreBtn">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><polyline points="3 3 3 8 8 8"/></svg>
+                    Recompute score
+                  </button>
+                </div>
+
+                <!-- Factor breakdown (SHAP-style) -->
+                <div class="asc-facts" id="ascFacts">
+                  <div class="skeleton-line w70"></div>
+                  <div class="skeleton-line w50"></div>
+                </div>
+              </div>
+
+              <div class="appeal-strategy">
+                <h3>Appeal strategy</h3>
+                <div class="strategy-list" id="strategyList"></div>
+              </div>
+            </div>
+
+            <div class="appeal-main">
+              <div class="letter-editor">
+                <div class="letter-toolbar">
+                  <div class="tb-group">
+                    <button class="tool-btn" title="Bold" aria-label="Bold"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 4h8a4 4 0 0 1 0 8H6zM6 12h9a4 4 0 0 1 0 8H6z"/></svg></button>
+                    <button class="tool-btn" title="Italic" aria-label="Italic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="19" y1="4" x2="10" y2="4"/><line x1="14" y1="20" x2="5" y2="20"/><line x1="15" y1="4" x2="9" y2="20"/></svg></button>
+                    <button class="tool-btn" title="Underline" aria-label="Underline"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3v7a6 6 0 0 0 12 0V3"/><line x1="4" y1="21" x2="20" y2="21"/></svg></button>
+                  </div>
+                  <span class="tb-sep"></span>
+                  <div class="tb-group">
+                    <button class="tool-btn" title="Bullet list" aria-label="Bullet list"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg></button>
+                    <button class="tool-btn" title="Numbered list" aria-label="Numbered list"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="10" y1="6" x2="21" y2="6"/><line x1="10" y1="12" x2="21" y2="12"/><line x1="10" y1="18" x2="21" y2="18"/><path d="M4 6h1v4M4 10h2M6 18H4c0-1 2-2 2-3s-1-1.5-2-1"/></svg></button>
+                  </div>
+                </div>
+                <textarea id="letterTextarea" spellcheck="true" aria-label="Appeal letter editor" placeholder="Your appeal letter will appear here once the bill is analyzed."></textarea>
+                <div class="letter-footer">
+                  <span class="lf-hint">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l7 4v5c0 4.6-3 7.6-7 9-4-1.4-7-4.4-7-9V7l7-4z"/><path d="M9 12l2 2 4-4.5"/></svg>
+                    <span id="letterFooterHint">Auto-saved · Draft #1</span>
+                  </span>
+                  <div class="letter-actions">
+                    <a href="#" class="btn btn-secondary btn-sm" id="shareLetterBtn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8"/><polyline points="16 6 12 2 8 6"/><line x1="12" y1="2" x2="12" y2="15"/></svg> Share</a>
+                    <a href="#" class="btn btn-primary btn-sm" id="sendLetterBtn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg> Mark as sent</a>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- ============ ACTIONS / TRACKER ============ -->
+        <section class="page-section" id="page-actions">
+          <div class="page-header">
+            <div>
+              <h1>Action tracker</h1>
+              <p>Your step-by-step plan with deadlines and document templates.</p>
+            </div>
+            <div class="page-actions">
+              <span class="deadline-pill urgent" id="deadlinePill">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 3"/></svg>
+                <span id="deadlinePillText">Deadline pending</span>
+              </span>
+            </div>
+          </div>
+
+          <div class="tracker-grid">
+            <div>
+              <div class="tracker-card">
+                <h3><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 3"/></svg> Claim timeline</h3>
+                <div class="timeline" id="timeline"></div>
+              </div>
+            </div>
+            <div>
+              <div class="tracker-card">
+                <h3><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg> Checklist</h3>
+                <div class="action-list" id="checklist"></div>
+              </div>
+              <div class="tracker-card">
+                <h3><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg> Documents</h3>
+                <div class="doc-upload-row" id="docUploadRow">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                  <div>Attach supporting documents (itemized bill, medical records, etc.)</div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- ============ GLOSSARY ============ -->
+        <section class="page-section" id="page-glossary">
+          <div class="page-header">
+            <div>
+              <h1>Code glossary</h1>
+              <p id="glossarySub">Pulled live from AMA/CMS-validated reference data.</p>
+            </div>
+          </div>
+          <div class="search-box glossary-search">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+            <input type="text" id="glossarySearch" placeholder="Search codes or terms…" aria-label="Search glossary" />
+          </div>
+
+          <!-- Glossary loading skeleton -->
+          <div class="glossary-grid" id="glossarySkeleton">
+            <div class="glossary-card skeleton-card"><div class="skeleton-line w30"></div><div class="skeleton-line w90"></div></div>
+            <div class="glossary-card skeleton-card"><div class="skeleton-line w30"></div><div class="skeleton-line w90"></div></div>
+            <div class="glossary-card skeleton-card"><div class="skeleton-line w30"></div><div class="skeleton-line w90"></div></div>
+          </div>
+
+          <div class="glossary-grid" id="glossaryGrid"></div>
+
+          <!-- Glossary detail modal (deep-link destination) -->
+          <div class="glossary-detail" id="glossaryDetail" hidden>
+            <div class="gd-head">
+              <span class="gd-code" id="gdCode"></span>
+              <span class="g-type" id="gdType" style="margin:0;"></span>
+              <button class="gd-close" id="gdClose" aria-label="Close">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg>
+              </button>
+            </div>
+            <h3 id="gdTitle"></h3>
+            <div class="gd-plain" id="gdPlain"></div>
+            <div class="gd-meta">
+              <div><span>Category</span><strong id="gdCategory"></strong></div>
+              <div><span>Also known as</span><strong id="gdAka"></strong></div>
+              <div><span>Source</span><strong id="gdSource"></strong></div>
+              <div><span>Status</span><strong id="gdStatus"></strong></div>
+            </div>
+            <div class="gd-notes" id="gdNotes" hidden></div>
+            <div class="gd-actions">
+              <a href="#" class="btn btn-secondary btn-sm" id="gdCloseBtn">Close</a>
+            </div>
+          </div>
+        </section>
+
+        <!-- ============ SETTINGS ============ -->
+        <section class="page-section" id="page-settings">
+          <div class="page-header">
+            <div>
+              <h1>Settings</h1>
+              <p>Manage your account, privacy, and preferences.</p>
+            </div>
+          </div>
+          <div class="grid-2">
+            <div class="dash-card">
+              <h3><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg> Profile</h3>
+              <p style="font-size:14px; color:var(--slate-500); margin-bottom:16px;">Your personal information is used only to personalize your claim analysis.</p>
+              <div style="display:flex; gap:10px; flex-wrap:wrap;">
+                <a href="#" class="btn btn-secondary btn-sm">Edit profile</a>
+                <a href="#" class="btn btn-secondary btn-sm">Change password</a>
+              </div>
+            </div>
+            <div class="dash-card">
+              <h3><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg> Privacy & data</h3>
+              <p style="font-size:14px; color:var(--slate-500); margin-bottom:16px;">Your health and financial data is encrypted end-to-end. You're always in control.</p>
+              <div style="display:flex; gap:10px; flex-wrap:wrap;">
+                <a href="#" class="btn btn-secondary btn-sm">Export my data</a>
+                <a href="#" class="btn btn-dark btn-sm" id="deleteDataBtn">Delete all data</a>
+              </div>
+            </div>
+          </div>
+        </section>
+
+      </main>
+    </div>
+  </div>
+
+  <!-- Toast container -->
+  <div class="toast-container" id="toastContainer" aria-live="polite"></div>
+
+  <!-- Modal -->
+  <div class="modal-backdrop" id="modalBackdrop">
+    <div class="modal" role="dialog" aria-modal="true" aria-labelledby="modalTitle">
+      <div class="modal-head">
+        <div>
+          <h3 id="modalTitle">Upgrade to Plus</h3>
+          <p id="modalSub">Unlock the full power of Vitta.</p>
+        </div>
+        <button class="modal-close" id="modalClose" aria-label="Close">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg>
+        </button>
+      </div>
+      <div class="modal-body">
+        <div style="display:flex; flex-direction:column; gap:14px;">
+          <div style="display:flex; align-items:center; gap:12px; padding:14px; background:var(--teal-50); border:1px solid var(--teal-200); border-radius:var(--radius-md);">
+            <span style="font-size:28px; font-weight:800; color:var(--teal-700);">$19</span>
+            <div>
+              <strong style="font-size:14px; color:var(--slate-800);">Plus — per claim</strong>
+              <p style="font-size:13px; color:var(--slate-500);">Unlimited uploads, full error detection, appeal drafting, and deadline tracking.</p>
+            </div>
+          </div>
+          <p style="font-size:14px; color:var(--slate-600);">Upgrade now to unlock:</p>
+          <ul style="list-style:none; display:flex; flex-direction:column; gap:9px; font-size:14px; color:var(--slate-600);">
+            <li style="display:flex; gap:9px;"><svg style="width:16px; height:16px; color:var(--teal-500); flex-shrink:0; margin-top:3px;" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg> Full error & overcharge detection</li>
+            <li style="display:flex; gap:9px;"><svg style="width:16px; height:16px; color:var(--teal-500); flex-shrink:0; margin-top:3px;" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg> Appeal drafting + success score</li>
+            <li style="display:flex; gap:9px;"><svg style="width:16px; height:16px; color:var(--teal-500); flex-shrink:0; margin-top:3px;" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg> Guided deadline & action tracker</li>
+            <li style="display:flex; gap:9px;"><svg style="width:16px; height:16px; color:var(--teal-500); flex-shrink:0; margin-top:3px;" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg> Negotiation talking points</li>
+          </ul>
+        </div>
+        <div class="modal-actions">
+          <a href="#" class="btn btn-secondary" id="modalCancel">Maybe later</a>
+          <a href="#" class="btn btn-primary" id="modalUpgrade">Upgrade now</a>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="js/api.js"></script>
+  <script src="js/app.js"></script>
+</body>
+</html>

@@ -522,7 +522,7 @@ def generate_mock_parsed_bill(
         letter=letter,
         audit={
             "extraction_engine": "mock-v1",
-            "rules_engine": "rust-rules-v0 (mock)",
+            "rules_engine": "rust-rules-v0",
             "llm_engine": "mock-llm-v1",
             "extraction_confidence": round(random.uniform(0.82, 0.96), 4),
             "processing_ms": random.randint(800, 3500),

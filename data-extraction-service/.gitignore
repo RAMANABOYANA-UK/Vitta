@@ -1,36 +1,18 @@
-# Rust
-bill_rules/target/
-**/*.rs.bk
-
 # Python
 __pycache__/
 *.py[cod]
-*$py.class
-*.so
-.Python
-env/
-venv/
-.venv/
-ENV/
-env.bak/
-venv.bak/
 *.egg-info/
 .eggs/
 build/
 dist/
 
-# Environment
+# Virtual environments
+.venv/
+venv/
+env/
+
+# Environment files
 .env
-.env.local
-.env.*.local
-
-# Databases
-*.db
-*.sqlite3
-
-# Uploads
-uploads/
-!uploads/.gitkeep
 
 # Trained model artifacts (large binary files — retrained via scripts/train_models.py)
 # Only the top-level models/ dir (not app/models/ source code)
@@ -41,7 +23,6 @@ uploads/
 .mypy_cache/
 .coverage
 htmlcov/
-.tox/
 
 # IDE
 .vscode/
@@ -55,4 +36,3 @@ Thumbs.db
 
 # Logs
 *.log
-logs/

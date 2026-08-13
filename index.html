@@ -1,0 +1,658 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="description" content="Vitta — The AI Medical Bill & Insurance Claim Navigator. Understand your bills, detect overcharges, and appeal denials in minutes." />
+  <title>Vitta — AI Medical Bill & Insurance Claim Navigator</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="css/styles.css" />
+  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%230d9488'/%3E%3Cpath d='M10 16l4 4 8-9' stroke='white' stroke-width='3' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E" />
+</head>
+<body>
+
+  <!-- ================= NAVBAR ================= -->
+  <header class="navbar">
+    <div class="container navbar-inner">
+      <a href="#top" class="brand" aria-label="Vitta home">
+        <span class="brand-logo">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M12 3l7 4v5c0 4.6-3 7.6-7 9-4-1.4-7-4.4-7-9V7l7-4z"/>
+            <path d="M9 12l2 2 4-4.5"/>
+          </svg>
+        </span>
+        Vitta
+      </a>
+      <nav class="navbar-links" aria-label="Main navigation">
+        <a href="#how-it-works">How it works</a>
+        <a href="#features">Features</a>
+        <a href="#pricing">Pricing</a>
+        <a href="#testimonials">Stories</a>
+        <a href="#faq">FAQ</a>
+      </nav>
+      <div class="navbar-actions">
+        <div class="navbar-cta">
+          <a href="app.html" class="btn btn-secondary btn-sm">Sign in</a>
+          <a href="app.html" class="btn btn-primary btn-sm">Start free — scan a bill</a>
+        </div>
+        <button class="btn btn-ghost mobile-toggle" id="mobileToggle" aria-label="Open menu" aria-expanded="false">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true">
+            <path d="M4 7h16M4 12h16M4 17h16"/>
+          </svg>
+        </button>
+      </div>
+    </div>
+    <!-- Mobile menu -->
+    <div id="mobileMenu" class="mobile-menu" hidden>
+      <a href="app.html" class="btn btn-primary" style="margin-top:12px;">Start free</a>
+    </div>
+  </header>
+
+  <main id="top">
+
+    <!-- ================= HERO ================= -->
+    <section class="hero">
+      <div class="container hero-inner">
+        <div class="hero-copy reveal visible">
+          <span class="hero-eyebrow">
+            <span class="pulse-dot"></span>
+            Backed by 40M+ real claim records
+          </span>
+          <h1>Medical bills,<br />finally made <span class="highlight">simple.</span></h1>
+          <p class="hero-sub">
+            Snap a photo of your bill or Explanation of Benefits. Vitta decodes every code,
+            finds billing errors and overcharges, and drafts ready-to-send appeals — in plain language.
+          </p>
+          <div class="hero-actions">
+            <a href="app.html" class="btn btn-primary btn-lg">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                <polyline points="7 10 12 15 17 10"/>
+                <line x1="12" y1="15" x2="12" y2="3"/>
+              </svg>
+              Upload your bill — free
+            </a>
+            <a href="#how-it-works" class="btn btn-secondary btn-lg">See how it works</a>
+          </div>
+          <div class="hero-stats">
+            <div class="hero-stat">
+              <strong>$1,840</strong>
+              <span>avg. saved per claim</span>
+            </div>
+            <div class="hero-stat">
+              <strong>87%</strong>
+              <span>successful appeal rate</span>
+            </div>
+            <div class="hero-stat">
+              <strong>120+</strong>
+              <span>insurers supported</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Hero visual: mock app window -->
+        <div class="hero-visual reveal visible">
+          <div class="glow" aria-hidden="true"></div>
+          <div class="app-window" aria-hidden="true">
+            <div class="app-window-bar">
+              <span class="dot"></span><span class="dot"></span><span class="dot"></span>
+              <span class="title">vitta.app — Bill analysis</span>
+            </div>
+            <div class="mock-bill">
+              <div class="mock-summary">
+                <div class="mock-stat">
+                  <span>You were billed</span>
+                  <strong>$7,842.50</strong>
+                </div>
+                <div class="mock-stat highlight">
+                  <span>Fair price range</span>
+                  <strong>$3,100 – $4,200</strong>
+                </div>
+                <div class="mock-stat lowlight">
+                  <span>Likely overcharge</span>
+                  <strong>$2,940</strong>
+                </div>
+                <div class="mock-stat">
+                  <span>Appeal success chance</span>
+                  <strong>84%</strong>
+                </div>
+              </div>
+              <div class="mock-issues">
+                <div class="mock-issue">
+                  <span class="icon red">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 9v4M12 17h.01"/><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/></svg>
+                  </span>
+                  <div>
+                    <p>Unbundled procedure codes</p>
+                    <span>CPT 99283 billed with 99284</span>
+                  </div>
+                  <span class="amount">$1,120</span>
+                </div>
+                <div class="mock-issue">
+                  <span class="icon amber">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l9 16H3l9-16z"/><path d="M12 10v4M12 17h.01"/></svg>
+                  </span>
+                  <div>
+                    <p>Possible upcoding</p>
+                    <span>Level-5 visit vs. documented Level-4</span>
+                  </div>
+                  <span class="amount">$890</span>
+                </div>
+                <div class="mock-issue">
+                  <span class="icon red">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v4l2.5 2.5"/></svg>
+                  </span>
+                  <div>
+                    <p>Duplicate charge</p>
+                    <span>Lab panel billed twice on same date</span>
+                  </div>
+                  <span class="amount">$930</span>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="float-card float-card-1" aria-hidden="true">
+            <span class="fc-icon teal">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l7 4v5c0 4.6-3 7.6-7 9-4-1.4-7-4.4-7-9V7l7-4z"/><path d="M9 12l2 2 4-4.5"/></svg>
+            </span>
+            <div>
+              <p>Appeal ready</p>
+              <strong>Letter drafted in 40s</strong>
+            </div>
+          </div>
+          <div class="float-card float-card-2" aria-hidden="true">
+            <span class="fc-icon indigo">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+            </span>
+            <div>
+              <p>Shared with advocate</p>
+              <strong>Secure, encrypted link</strong>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ================= HOW IT WORKS ================= -->
+    <section class="section" id="how-it-works">
+      <div class="container">
+        <div class="section-head reveal">
+          <span class="section-tag">How it works</span>
+          <h2>From confusing paper to a clear action plan</h2>
+          <p>Four simple steps. No medical degree required.</p>
+        </div>
+        <div class="steps">
+          <div class="step-card reveal">
+            <span class="step-num">1</span>
+            <h3>Upload</h3>
+            <p>Snap a photo of your bill or EOB, or upload a PDF. OCR extracts every line item, code, and amount.</p>
+            <a href="app.html" class="step-link" aria-label="Start by uploading your bill"></a>
+          </div>
+          <div class="step-card reveal reveal-delay-1">
+            <span class="step-num">2</span>
+            <h3>Understand</h3>
+            <p>Plain-language explanations for every code: what was done, what's covered, what you owe, and why.</p>
+            <a href="app.html" class="step-link" aria-label="See your bill explained"></a>
+          </div>
+          <div class="step-card reveal reveal-delay-2">
+            <span class="step-num">3</span>
+            <h3>Detect errors</h3>
+            <p>AI flags upcoding, unbundling, duplicate charges, and out-of-network surprises — with potential savings.</p>
+            <a href="app.html" class="step-link" aria-label="Detect billing errors"></a>
+          </div>
+          <div class="step-card reveal reveal-delay-3">
+            <span class="step-num">4</span>
+            <h3>Act & appeal</h3>
+            <p>Get a success-probability score, a ready-to-edit appeal letter, and a step-by-step deadline tracker.</p>
+            <a href="app.html" class="step-link" aria-label="Draft your appeal"></a>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ================= FEATURES ================= -->
+    <section class="section" id="features" style="background:#fff; border-top:1px solid var(--slate-200); border-bottom:1px solid var(--slate-200);">
+      <div class="container">
+        <div class="section-head reveal">
+          <span class="section-tag">Features</span>
+          <h2>Everything you need to fight your bill</h2>
+          <p>Built to take you from confused to confident — end to end.</p>
+        </div>
+        <div class="features-grid">
+          <div class="feature-card reveal">
+            <span class="feature-icon teal">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+            </span>
+            <h3>OCR & smart parsing</h3>
+            <p>Photos, PDFs, and even hand-scanned pages become structured data — line items, CPT/ICD codes, and amounts, all extracted accurately.</p>
+          </div>
+          <div class="feature-card reveal reveal-delay-1">
+            <span class="feature-icon indigo">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/><path d="M16 13H8M16 17H8M10 9H8"/></svg>
+            </span>
+            <h3>Error & overcharge detection</h3>
+            <p>Trained on 40M+ claims and common billing mistake patterns to catch upcoding, unbundling, duplicates, and more.</p>
+          </div>
+          <div class="feature-card reveal reveal-delay-2">
+            <span class="feature-icon amber">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+            </span>
+            <h3>Appeal prediction</h3>
+            <p>Estimate your success chance based on similar historical cases, denial reason, insurer, and jurisdiction.</p>
+          </div>
+          <div class="feature-card reveal">
+            <span class="feature-icon blue">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
+            </span>
+            <h3>Auto-drafted appeals</h3>
+            <p>Jurisdiction-aware appeal letters and negotiation scripts, customized to the denial reason — edit, print, send.</p>
+          </div>
+          <div class="feature-card reveal reveal-delay-1">
+            <span class="feature-icon emerald">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+            </span>
+            <h3>Fair-price comparisons</h3>
+            <p>See what your procedure should cost using public pricing data, and get negotiation talking points backed by evidence.</p>
+          </div>
+          <div class="feature-card reveal reveal-delay-2">
+            <span class="feature-icon red">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+            </span>
+            <h3>Private by design</h3>
+            <p>Your health and financial data is encrypted end-to-end, never sold, and shareable only with people you choose.</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ================= PRODUCT DEEP-DIVE ================= -->
+    <section class="section deep-dive" id="product">
+      <div class="container deep-grid">
+        <div class="deep-copy reveal">
+          <span class="section-tag" style="margin-bottom:14px;">The Vitta difference</span>
+          <h2>Don't just scan your bill. Win the fight.</h2>
+          <p>
+            Most tools stop at "here's what your bill says." Vitta goes the full distance —
+            from plain-language understanding to a drafted appeal with a success score and a deadline to meet it.
+          </p>
+          <div class="deep-list">
+            <div class="deep-item">
+              <span class="check">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+              </span>
+              <div>
+                <strong>End-to-end guided workflow</strong>
+                <p>Understand → detect → appeal → track. A checklist keeps you on schedule with templates at every step.</p>
+              </div>
+            </div>
+            <div class="deep-item">
+              <span class="check">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+              </span>
+              <div>
+                <strong>Plain language for every code</strong>
+                <p>CPT, ICD-10, DRG, COB — every code is translated into what it means for you, your coverage, and your wallet.</p>
+              </div>
+            </div>
+            <div class="deep-item">
+              <span class="check">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+              </span>
+              <div>
+                <strong>Success-probability guidance</strong>
+                <p>See the realistic odds of a winning appeal before you invest the time — and the strongest angles to argue.</p>
+              </div>
+            </div>
+          </div>
+          <a href="app.html" class="btn btn-primary btn-lg">Try the live demo</a>
+        </div>
+
+        <div class="deep-visual reveal">
+          <div class="appeal-card">
+            <div class="appeal-head">
+              <div>
+                <h3>Appeal Letter — Draft #1</h3>
+                <p>Claim #2025-8841 · Denial: "Not medically necessary"</p>
+              </div>
+              <div class="gauge">
+                <svg viewBox="0 0 42 42">
+                  <defs>
+                    <linearGradient id="gaugeGrad" x1="0%" y1="0%" x2="100%" y2="0%">
+                      <stop offset="0%" stop-color="#0d9488"/>
+                      <stop offset="100%" stop-color="#2dd4bf"/>
+                    </linearGradient>
+                  </defs>
+                  <circle class="track" cx="21" cy="21" r="16.5"></circle>
+                  <circle class="fill" cx="21" cy="21" r="16.5" stroke-dasharray="103.67" stroke-dashoffset="16.6"></circle>
+                </svg>
+                <div class="gauge-label">
+                  <strong>84%</strong>
+                  <span>success</span>
+                </div>
+              </div>
+            </div>
+            <div class="appeal-body">
+              <p>
+                <strong>Re: Claim #2025-8841 — Request for Reconsideration</strong><br /><br />
+                To Whom It May Concern,<br /><br />
+                I am writing to appeal the denial of claim #2025-8841 dated January 22. My provider,
+                Dr. Elena Marsh (NPI 1834...), certified this procedure as medically necessary,
+                and the clinical documentation (attached) supports a Level-4 visit rather than the
+                Level-5 code that was billed.<br /><br />
+                Per your own medical policy #MRG-2201, ... <strong>[Continue editing →]</strong>
+              </p>
+            </div>
+            <div class="payoff-grid">
+              <div class="payoff-card">
+                <div class="num">$2,940<em> est.</em></div>
+                <p>Potential savings with one appeal</p>
+              </div>
+              <div class="payoff-card">
+                <div class="num">4 min<em> avg.</em></div>
+                <p>Time to a ready-to-send letter</p>
+              </div>
+              <div class="payoff-card">
+                <div class="num">120+<em> plans</em></div>
+                <p>Appeal policies in our model</p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ================= PRICING ================= -->
+    <section class="section" id="pricing">
+      <div class="container">
+        <div class="section-head reveal">
+          <span class="section-tag">Pricing</span>
+          <h2>Start free. Upgrade when you win.</h2>
+          <p>No hidden fees. Cancel anytime. Every paid plan includes a money-back guarantee if we don't find savings.</p>
+        </div>
+        <div class="pricing-grid">
+          <!-- Starter -->
+          <div class="pricing-card reveal">
+            <h3>Starter</h3>
+            <p class="desc">For understanding one bill or EOB — no commitment.</p>
+            <div class="price">
+              <span class="amount">$0</span>
+              <span class="period">/ forever</span>
+            </div>
+            <ul class="pricing-features">
+              <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg> Upload up to 3 bills</li>
+              <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg> Plain-language explanations</li>
+              <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg> Fair-price estimate per bill</li>
+              <li class="off"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18M6 6l12 12"/></svg> Error detection & savings estimate</li>
+              <li class="off"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18M6 6l12 12"/></svg> Appeal drafting & success score</li>
+            </ul>
+            <a href="app.html" class="btn btn-secondary" style="width:100%;">Get started free</a>
+          </div>
+          <!-- Plus -->
+          <div class="pricing-card featured reveal reveal-delay-1">
+            <span class="pricing-pop">Most popular</span>
+            <h3>Plus</h3>
+            <p class="desc">For fighting one claim to the finish line.</p>
+            <div class="price">
+              <span class="amount">$19</span>
+              <span class="period">/ claim</span>
+            </div>
+            <ul class="pricing-features">
+              <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg> Unlimited uploads for one claim</li>
+              <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg> Full error & overcharge detection</li>
+              <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg> Appeal drafting + success score</li>
+              <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg> Guided deadline & action tracker</li>
+              <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg> Negotiation talking points</li>
+            </ul>
+            <a href="app.html" class="btn btn-primary" style="width:100%;">Fight my bill</a>
+          </div>
+          <!-- Advocate -->
+          <div class="pricing-card reveal reveal-delay-2">
+            <h3>Advocate</h3>
+            <p class="desc">For households, advocates, and clinics managing many claims.</p>
+            <div class="price">
+              <span class="amount">$99</span>
+              <span class="period">/ month</span>
+            </div>
+            <ul class="pricing-features">
+              <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg> Everything in Plus, unlimited claims</li>
+              <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg> Team sharing with secure roles</li>
+              <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg> Bulk upload & batch analysis</li>
+              <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg> Priority appeals desk support</li>
+              <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg> API access for clinics & navigators</li>
+            </ul>
+            <a href="app.html" class="btn btn-dark" style="width:100%;">Contact sales</a>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ================= TESTIMONIALS ================= -->
+    <section class="section" id="testimonials" style="background:#fff; border-top:1px solid var(--slate-200); border-bottom:1px solid var(--slate-200);">
+      <div class="container">
+        <div class="section-head reveal">
+          <span class="section-tag">Patient stories</span>
+          <h2>Real people. Real savings.</h2>
+          <p>Thousands of families have used Vitta to take control of their medical bills.</p>
+        </div>
+        <div class="testimonial-grid">
+          <div class="testimonial-card reveal">
+            <div class="testimonial-stars" aria-label="5 out of 5 stars">
+              <svg viewBox="0 0 24 24"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
+              <svg viewBox="0 0 24 24"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
+              <svg viewBox="0 0 24 24"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
+              <svg viewBox="0 0 24 24"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
+              <svg viewBox="0 0 24 24"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
+            </div>
+            <blockquote>
+              "The hospital wanted $9,400 for a two-night stay. Vitta found three billing errors
+              and drafted an appeal in minutes. We paid $1,850. I still can't believe it."
+            </blockquote>
+            <div class="testimonial-person">
+              <span class="avatar a1">MR</span>
+              <div>
+                <strong>Maria R.</strong>
+                <span>Saved $7,550 · Texas</span>
+              </div>
+            </div>
+          </div>
+          <div class="testimonial-card reveal reveal-delay-1">
+            <div class="testimonial-stars" aria-label="5 out of 5 stars">
+              <svg viewBox="0 0 24 24"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
+              <svg viewBox="0 0 24 24"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
+              <svg viewBox="0 0 24 24"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
+              <svg viewBox="0 0 24 24"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
+              <svg viewBox="0 0 24 24"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
+            </div>
+            <blockquote>
+              "I'm a patient advocate handling 30+ cases a month. Vitta's batch analysis and
+              appeal drafts cut my prep time from three hours per case to twenty minutes."
+            </blockquote>
+            <div class="testimonial-person">
+              <span class="avatar a2">DK</span>
+              <div>
+                <strong>David K.</strong>
+                <span>Certified patient advocate · New York</span>
+              </div>
+            </div>
+          </div>
+          <div class="testimonial-card reveal reveal-delay-2">
+            <div class="testimonial-stars" aria-label="5 out of 5 stars">
+              <svg viewBox="0 0 24 24"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
+              <svg viewBox="0 0 24 24"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
+              <svg viewBox="0 0 24 24"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
+              <svg viewBox="0 0 24 24"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
+              <svg viewBox="0 0 24 24"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
+            </div>
+            <blockquote>
+              "My denial reason was 'out of network' — Vitta showed me the No Surprises Act
+              clause that protected me and generated a letter citing the exact statute. Approved in 3 weeks."
+            </blockquote>
+            <div class="testimonial-person">
+              <span class="avatar a3">JT</span>
+              <div>
+                <strong>James T.</strong>
+                <span>Claim overturned · California</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ================= FAQ ================= -->
+    <section class="section" id="faq">
+      <div class="container">
+        <div class="section-head reveal">
+          <span class="section-tag">FAQ</span>
+          <h2>Questions, answered</h2>
+          <p>Everything you need to know before you fight your bill.</p>
+        </div>
+        <div class="faq-list reveal">
+          <div class="faq-item">
+            <button class="faq-btn" aria-expanded="false">
+              Is my medical information secure?
+              <span class="plus"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg></span>
+            </button>
+            <div class="faq-answer">
+              <div class="faq-answer-inner">
+                Yes. All documents are encrypted in transit (TLS 1.3) and at rest (AES-256).
+                We are HIPAA-aligned, never sell your data, and you can permanently delete
+                everything with one click. Sharing is optional and always under your control.
+              </div>
+            </div>
+          </div>
+          <div class="faq-item">
+            <button class="faq-btn" aria-expanded="false">
+              What if the appeal doesn't work?
+              <span class="plus"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg></span>
+            </button>
+            <div class="faq-answer">
+              <div class="faq-answer-inner">
+                Vitta's models are built on outcomes data, so you'll see a realistic success
+                probability before you invest effort. On the Plus plan, if we find zero errors
+                or overcharges on your claim, your money is fully refunded.
+              </div>
+            </div>
+          </div>
+          <div class="faq-item">
+            <button class="faq-btn" aria-expanded="false">
+              Do you support my insurance company?
+              <span class="plus"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg></span>
+            </button>
+            <div class="faq-answer">
+              <div class="faq-answer-inner">
+                We cover 120+ major US insurers and all CMS-regulated plans. If we don't recognize
+                your insurer yet, you can request a review and we'll typically add support within 5 business days.
+              </div>
+            </div>
+          </div>
+          <div class="faq-item">
+            <button class="faq-btn" aria-expanded="false">
+              Can Vitta negotiate with the hospital for me?
+              <span class="plus"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg></span>
+            </button>
+            <div class="faq-answer">
+              <div class="faq-answer-inner">
+                Vitta prepares the complete negotiation package — talking points, fair-price
+                comparisons, and a phone script — and walks you through each step. You make the call.
+                Advocate plan members can opt into our concierge team that negotiates on your behalf.
+              </div>
+            </div>
+          </div>
+          <div class="faq-item">
+            <button class="faq-btn" aria-expanded="false">
+              What if my bill is from an out-of-network provider?
+              <span class="plus"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg></span>
+            </button>
+            <div class="faq-answer">
+              <div class="faq-answer-inner">
+                These are exactly the bills we love. Vitta checks protections like the No Surprises
+                Act, flags balance-billing violations, and drafts the right dispute letter with the
+                correct agency cited — federal or your state's insurance department.
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ================= CTA ================= -->
+    <section class="section" style="padding-top:0;">
+      <div class="container">
+        <div class="cta-band reveal">
+          <h2>Your bill is probably wrong.<br />Find out in 2 minutes — free.</h2>
+          <p>
+            Upload your bill or EOB, get a plain-language breakdown, and see exactly where
+            you're being overcharged and what to do about it.
+          </p>
+          <div>
+            <a href="app.html" class="btn btn-white btn-lg">Scan my bill — it's free</a>
+          </div>
+          <p class="cta-note">No credit card required · Encrypted & private · First analysis in under 60 seconds</p>
+        </div>
+      </div>
+    </section>
+
+  </main>
+
+  <!-- ================= FOOTER ================= -->
+  <footer class="footer">
+    <div class="container">
+      <div class="footer-grid">
+        <div>
+          <a href="#top" class="brand">
+            <span class="brand-logo">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l7 4v5c0 4.6-3 7.6-7 9-4-1.4-7-4.4-7-9V7l7-4z"/><path d="M9 12l2 2 4-4.5"/></svg>
+            </span>
+            Vitta
+          </a>
+          <p class="footer-desc">The AI medical bill & insurance claim navigator. Understand your bills, spot overcharges, and appeal denials — in minutes, not months.</p>
+          <div class="social-row">
+            <a href="#" class="social-btn" aria-label="Twitter">
+              <svg viewBox="0 0 24 24" fill="currentColor"><path d="M22 5.9c-.7.3-1.5.6-2.3.7.8-.5 1.5-1.3 1.8-2.3-.8.5-1.7.8-2.6 1a4.1 4.1 0 0 0-7 3.8A11.6 11.6 0 0 1 3.4 4.6a4.1 4.1 0 0 0 1.3 5.5c-.7 0-1.3-.2-1.9-.5v.1c0 2 1.4 3.6 3.3 4a4.2 4.2 0 0 1-1.9.1 4.1 4.1 0 0 0 3.8 2.9A8.2 8.2 0 0 1 2 18.4a11.6 11.6 0 0 0 6.3 1.8c7.6 0 11.7-6.3 11.7-11.7v-.5c.8-.6 1.5-1.3 2-2.1z"/></svg>
+            </a>
+            <a href="#" class="social-btn" aria-label="LinkedIn">
+              <svg viewBox="0 0 24 24" fill="currentColor"><path d="M20.4 20.4h-3.5v-5.6c0-1.3 0-3-1.9-3s-2.1 1.4-2.1 2.9v5.7H9.4V9h3.4v1.6h.1a3.7 3.7 0 0 1 3.4-1.9c3.6 0 4.3 2.4 4.3 5.5v6.2zM5.3 7.4a2 2 0 1 1 0-4.1 2 2 0 0 1 0 4.1zM7.1 20.4H3.6V9h3.5v11.4z"/></svg>
+            </a>
+            <a href="#" class="social-btn" aria-label="Facebook">
+              <svg viewBox="0 0 24 24" fill="currentColor"><path d="M22 12a10 10 0 1 0-11.6 9.9v-7H7.9V12h2.5V9.8c0-2.5 1.5-3.9 3.8-3.9 1.1 0 2.2.2 2.2.2v2.5h-1.3c-1.2 0-1.6.8-1.6 1.6V12h2.8l-.4 2.9h-2.4v7A10 10 0 0 0 22 12z"/></svg>
+            </a>
+            <a href="#" class="social-btn" aria-label="Instagram">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="2" width="20" height="20" rx="5"/><circle cx="12" cy="12" r="4.5"/><circle cx="17.5" cy="6.5" r="1.2" fill="currentColor" stroke="none"/></svg>
+            </a>
+          </div>
+        </div>
+        <div class="footer-col">
+          <h4>Resources</h4>
+          <a href="#">Bill code glossary</a>
+          <a href="#">Appeal letter templates</a>
+          <a href="#">No Surprises Act guide</a>
+          <a href="#">Fair price database</a>
+          <a href="#">Patient advocacy network</a>
+        </div>
+        <div class="footer-col">
+          <h4>Company</h4>
+          <a href="#">About us</a>
+          <a href="#">Careers</a>
+          <a href="#">Press kit</a>
+          <a href="#">Contact</a>
+          <a href="#">Privacy policy</a>
+          <a href="#">Terms of service</a>
+        </div>
+      </div>
+      <div class="footer-bottom">
+        <span>© 2026 Vitta Health, Inc. All rights reserved.</span>
+        <span class="shield">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l7 4v5c0 4.6-3 7.6-7 9-4-1.4-7-4.4-7-9V7l7-4z"/><path d="M9 12l2 2 4-4.5"/></svg>
+          HIPAA-aligned · SOC 2 Type II · Data never sold
+        </span>
+      </div>
+    </div>
+  </footer>
+
+  <script src="js/landing.js"></script>
+</body>
+</html>
+<task_progress>

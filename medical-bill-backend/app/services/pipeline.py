@@ -16,7 +16,9 @@ from sqlmodel.ext.asyncio.session import AsyncSession
 
 from app.config import settings
 from app.models import Document
+from app.services.letter_generator import generate_appeal_letter
 from app.services.mock_data import generate_mock_parsed_bill
+from app.services.rules_engine import apply_rules
 from app.schemas import DocumentStatus, ParsedBill
 
 logger = logging.getLogger(__name__)
@@ -99,10 +101,17 @@ async def run_pipeline(document_id: str, original_filename: str) -> ParsedBill:
             "Set MOCK_PIPELINE=true to use the mock pipeline."
         )
 
+    # Apply deterministic rules from the Rust engine
+    result = await apply_rules(result)
+
+    # Generate a grounded + verified appeal letter
+    result.letter = await generate_appeal_letter(result)
+
     logger.info(
-        "Pipeline completed for document %s: %d line items, %d denials",
+        "Pipeline completed for document %s: %d line items, %d denials, %d flags",
         document_id,
         len(result.line_items),
         len(result.denial_codes),
+        sum(len(i.flags) for i in result.line_items),
     )
     return result

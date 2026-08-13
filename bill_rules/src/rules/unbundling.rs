@@ -1,92 +1,78 @@
-use crate::types::{Flag, ParsedBill, Severity};
+use crate::types::{Flag, LineItem, NCCI_UNBUNDLING_PAIRS};
 
-/// Rule ID for NCCI unbundling detection.
-const RULE_NCCI_UNBUNDLE: &str = "NCCI-UNBUNDLE-001";
-
-/// Known NCCI unbundling pairs: (component, comprehensive).
+/// Detect NCCI unbundling: a *component* code billed alongside its
+/// *comprehensive* code.
 ///
-/// When a component code is billed alongside its comprehensive code,
-/// the component should be bundled into the comprehensive — billing both
-/// separately is a common unbundling error.
+/// Pair format: `(component, comprehensive)`.
 ///
-/// This is a small starter set. In production this would be loaded from
-/// the full NCCI PTP (Procedure-to-Procedure) edit file.
-const NCCI_PAIRS: &[(&str, &str)] = &[
-    // Colonoscopy (comprehensive) vs. sigmoidoscopy (component)
-    ("45330", "45378"), // Sigmoidoscopy, diagnostic → Colonoscopy, diagnostic
-    ("45331", "45378"), // Sigmoidoscopy with biopsy → Colonoscopy, diagnostic
-    // EGD (comprehensive) vs. esophagoscopy (component)
-    ("43200", "43235"), // Esophagoscopy, diagnostic → EGD, diagnostic
-    // Chest X-ray (comprehensive) vs. single view (component)
-    ("71045", "71046"), // Chest X-ray, single view → Chest X-ray, 2 views
-    // CBC (comprehensive) vs. individual components
-    ("85014", "85025"), // Hematocrit → CBC with differential
-    ("85018", "85025"), // Hemoglobin → CBC with differential
-    // Office visit (comprehensive) vs. minor procedures
-    ("99211", "99213"), // Level 1 visit → Level 3 visit
-];
-
-/// Detect NCCI unbundling: component code billed alongside its comprehensive code.
+/// When both codes appear on the same bill, the component (e.g. a
+/// venipuncture, a sigmoidoscopy) is typically considered already
+/// included in the comprehensive service (e.g. the E/M visit, the
+/// colonoscopy). Billing both separately is a common unbundling error.
 ///
-/// Flags both the component and comprehensive line items with a warning,
-/// since the component charge should typically be bundled into the
-/// comprehensive service.
-pub fn detect_unbundling(bill: &mut ParsedBill) {
-    let items = bill.line_items.clone();
+/// A single component code may map to **multiple** comprehensive codes
+/// (e.g. `36415` venipuncture is bundled into `99211`–`99215`). This
+/// rule checks **all** pairs, not just the first match, and emits one
+/// flag per comprehensive code actually present on the bill.
+///
+/// The flag is attached to the **component** item, with a message that
+/// names both codes. Flags are deduplicated by `rule_id`.
+pub fn detect_unbundling(line_items: &mut [LineItem]) {
+    // Snapshot the CPT codes before mutating flags.
+    let snapshot: Vec<(usize, Option<String>)> = line_items
+        .iter()
+        .enumerate()
+        .map(|(i, item)| (i, item.cpt_hcpcs.clone()))
+        .collect();
 
-    for (i, item_a) in items.iter().enumerate() {
-        let Some(cpt_a) = item_a.cpt_hcpcs.as_deref() else {
+    // Build a lookup: component code → all comprehensive codes it maps to.
+    // This avoids O(n²) scans over the pair list for every line item.
+    let mut component_to_comprehensive: std::collections::BTreeMap<&str, Vec<&str>> =
+        std::collections::BTreeMap::new();
+    for (component, comprehensive) in NCCI_UNBUNDLING_PAIRS {
+        component_to_comprehensive
+            .entry(component)
+            .or_default()
+            .push(comprehensive);
+    }
+
+    for a in 0..snapshot.len() {
+        let (idx_a, Some(cpt_a)) = (&snapshot[a].0, &snapshot[a].1) else {
             continue;
         };
 
-        for (j, item_b) in items.iter().enumerate() {
-            if i >= j {
-                continue;
-            }
+        // All comprehensive codes this component maps to.
+        let Some(comprehensive_codes) = component_to_comprehensive.get(cpt_a.as_str()) else {
+            continue;
+        };
 
-            let Some(cpt_b) = item_b.cpt_hcpcs.as_deref() else {
-                continue;
-            };
-
-            // Check both directions: (a is component, b is comprehensive) and vice versa
-            let is_unbundled = NCCI_PAIRS.iter().any(|(component, comprehensive)| {
-                (cpt_a == *component && cpt_b == *comprehensive)
-                    || (cpt_b == *component && cpt_a == *comprehensive)
+        for comprehensive in comprehensive_codes {
+            // Is this comprehensive code also present on the bill (any item
+            // other than the component item itself)?
+            let comprehensive_present = snapshot.iter().any(|(idx_b, cpt_b)| {
+                idx_b != idx_a && cpt_b.as_deref() == Some(*comprehensive)
             });
 
-            if !is_unbundled {
+            if !comprehensive_present {
                 continue;
             }
 
-            // Determine which is the component and which is the comprehensive
-            let (component_cpt, comprehensive_cpt) = if NCCI_PAIRS
-                .iter()
-                .any(|(c, comp)| cpt_a == *c && cpt_b == *comp)
-            {
-                (cpt_a, cpt_b)
-            } else {
-                (cpt_b, cpt_a)
+            let rule_id = format!("NCCI-{}-{}", cpt_a, comprehensive);
+
+            let flag = Flag {
+                r#type: "unbundling".to_string(),
+                severity: "high".to_string(),
+                message: format!(
+                    "CPT {} is typically bundled into CPT {} per NCCI edits and shouldn't usually be billed separately.",
+                    cpt_a, comprehensive
+                ),
+                rule_id: Some(rule_id.clone()),
+                shap_contribution: None,
             };
 
-            let flag = Flag::new(
-                "unbundling",
-                Severity::Warning,
-                format!(
-                    "Possible NCCI unbundling: CPT {} (component) should be bundled into CPT {} (comprehensive).",
-                    component_cpt, comprehensive_cpt
-                ),
-                RULE_NCCI_UNBUNDLE,
-            );
-
-            // Flag both items
-            if let Some(line) = bill.line_items.get_mut(i) {
-                if !line.flags.iter().any(|f| f.rule_id == Some(RULE_NCCI_UNBUNDLE.to_string())) {
-                    line.flags.push(flag.clone());
-                }
-            }
-            if let Some(line) = bill.line_items.get_mut(j) {
-                if !line.flags.iter().any(|f| f.rule_id == Some(RULE_NCCI_UNBUNDLE.to_string())) {
-                    line.flags.push(flag);
+            if let Some(item) = line_items.get_mut(*idx_a) {
+                if !item.flags.iter().any(|f| f.rule_id == Some(rule_id.clone())) {
+                    item.flags.push(flag);
                 }
             }
         }
@@ -96,7 +82,6 @@ pub fn detect_unbundling(bill: &mut ParsedBill) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::types::{LineItem, Totals};
 
     fn make_item(id: &str, cpt: &str, charge: f64) -> LineItem {
         LineItem {
@@ -112,77 +97,102 @@ mod tests {
             patient_responsibility: None,
             modifiers: vec![],
             flags: vec![],
-        }
-    }
-
-    fn make_bill(items: Vec<LineItem>) -> ParsedBill {
-        let billed: f64 = items.iter().map(|i| i.charge_amount).sum();
-        ParsedBill {
-            document_id: "test".to_string(),
-            status: "processing".to_string(),
             service_date: None,
-            line_items: items,
-            totals: Totals {
-                billed,
-                allowed: None,
-                insurance_paid: None,
-                patient_responsibility: None,
-                potential_savings: None,
-            },
         }
     }
 
     #[test]
-    fn detects_unbundling_pair() {
-        // Sigmoidoscopy (45330) + Colonoscopy (45378) — should be flagged
-        let mut bill = make_bill(vec![
-            make_item("1", "45330", 500.0),
-            make_item("2", "45378", 2100.0),
-        ]);
+    fn detects_component_with_comprehensive() {
+        // 36415 (venipuncture, component) + 99213 (level-3 E/M, comprehensive)
+        let mut items = vec![
+            make_item("1", "36415", 25.0),
+            make_item("2", "99213", 150.0),
+        ];
+        detect_unbundling(&mut items);
 
-        detect_unbundling(&mut bill);
+        // Flag should be on the component item (1), not the comprehensive (2).
+        assert_eq!(items[0].flags.len(), 1);
+        assert!(items[1].flags.is_empty());
 
-        let flags = bill.flags_of_type("unbundling");
-        assert_eq!(flags.len(), 2, "both items should be flagged");
-        assert_eq!(flags[0].rule_id.as_deref(), Some(RULE_NCCI_UNBUNDLE));
-        assert!(
-            flags[0].message.contains("45330"),
-            "message should mention the component CPT"
-        );
+        let f = &items[0].flags[0];
+        assert_eq!(f.rule_id.as_deref(), Some("NCCI-36415-99213"));
+        assert_eq!(f.severity, "high");
+        assert!(f.message.contains("36415"));
+        assert!(f.message.contains("99213"));
+        assert!(f.message.contains("bundled"));
     }
 
     #[test]
-    fn no_flag_for_unrelated_cpts() {
-        let mut bill = make_bill(vec![
-            make_item("1", "99285", 1000.0),
-            make_item("2", "80053", 150.0),
-        ]);
-
-        detect_unbundling(&mut bill);
-
-        assert_eq!(bill.total_flags(), 0);
-    }
-
-    #[test]
-    fn detects_reverse_order_pair() {
-        // Colonoscopy (45378) billed before Sigmoidoscopy (45330)
-        let mut bill = make_bill(vec![
-            make_item("1", "45378", 2100.0),
-            make_item("2", "45330", 500.0),
-        ]);
-
-        detect_unbundling(&mut bill);
-
-        assert_eq!(bill.flags_of_type("unbundling").len(), 2);
+    fn detects_when_comprehensive_comes_first() {
+        // Order shouldn't matter: comprehensive listed before component.
+        let mut items = vec![
+            make_item("1", "99213", 150.0),
+            make_item("2", "36415", 25.0),
+        ];
+        detect_unbundling(&mut items);
+        assert_eq!(items[1].flags.len(), 1);
+        assert!(items[0].flags.is_empty());
     }
 
     #[test]
     fn no_flag_when_only_component_present() {
-        // Only the component code, no comprehensive — not an unbundling issue
-        let mut bill = make_bill(vec![make_item("1", "45330", 500.0)]);
+        let mut items = vec![make_item("1", "36415", 25.0)];
+        detect_unbundling(&mut items);
+        assert!(items[0].flags.is_empty());
+    }
 
-        detect_unbundling(&mut bill);
+    #[test]
+    fn no_flag_when_only_comprehensive_present() {
+        let mut items = vec![make_item("1", "99213", 150.0)];
+        detect_unbundling(&mut items);
+        assert!(items[0].flags.is_empty());
+    }
 
-        assert_eq!(bill.total_flags(), 0);
+    #[test]
+    fn flags_are_deduplicated() {
+        // Even with multiple passes of the same pair, the flag shouldn't stack.
+        let mut items = vec![
+            make_item("1", "36415", 25.0),
+            make_item("2", "99213", 150.0),
+        ];
+        detect_unbundling(&mut items);
+        detect_unbundling(&mut items);
+        assert_eq!(items[0].flags.len(), 1);
+    }
+
+    #[test]
+    fn detects_multiple_comprehensive_codes_for_same_component() {
+        // 36415 (venipuncture) maps to 99213, 99214, AND 99215.
+        // If all three comprehensive codes are present, we should get
+        // three separate flags on the component item.
+        let mut items = vec![
+            make_item("1", "36415", 25.0),
+            make_item("2", "99213", 150.0),
+            make_item("3", "99214", 180.0),
+            make_item("4", "99215", 220.0),
+        ];
+        detect_unbundling(&mut items);
+
+        assert_eq!(items[0].flags.len(), 3, "should flag all 3 comprehensive codes");
+        let rule_ids: Vec<&str> = items[0]
+            .flags
+            .iter()
+            .filter_map(|f| f.rule_id.as_deref())
+            .collect();
+        assert!(rule_ids.contains(&"NCCI-36415-99213"));
+        assert!(rule_ids.contains(&"NCCI-36415-99214"));
+        assert!(rule_ids.contains(&"NCCI-36415-99215"));
+    }
+
+    #[test]
+    fn only_flags_comprehensive_codes_actually_present() {
+        // 36415 maps to 99213/99214/99215, but only 99214 is on the bill.
+        let mut items = vec![
+            make_item("1", "36415", 25.0),
+            make_item("2", "99214", 180.0),
+        ];
+        detect_unbundling(&mut items);
+        assert_eq!(items[0].flags.len(), 1);
+        assert_eq!(items[0].flags[0].rule_id.as_deref(), Some("NCCI-36415-99214"));
     }
 }

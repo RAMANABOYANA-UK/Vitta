@@ -17,5 +17,18 @@ class Settings(BaseSettings):
     PIPELINE_DELAY_SECONDS: float = 3.0
     MOCK_PIPELINE: bool = True
 
+    # Rust rules engine settings
+    RULES_ENGINE_URL: str = "http://localhost:3001"
+    RULES_ENGINE_TIMEOUT_SECONDS: float = 5.0
+    RULES_ENGINE_ENABLED: bool = True
+
+    # LLM letter generation settings
+    LLM_ENABLED: bool = True
+    LLM_PROVIDER: str = "openai"
+    LLM_API_KEY: str | None = None
+    LLM_MODEL: str = "gpt-4o"
+    LLM_TIMEOUT_SECONDS: float = 30.0
+    LLM_MAX_RETRIES: int = 1
+
 
 settings = Settings()

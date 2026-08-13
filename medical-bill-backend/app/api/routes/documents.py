@@ -13,9 +13,13 @@ from app.models import Document
 from app.schemas import (
     DocumentDetailResponse,
     DocumentResponse,
+    DocumentStatus,
     DocumentStatusResponse,
+    Letter,
+    LetterUpdateRequest,
     ParsedBill,
 )
+from app.services.letter_verifier import verify_letter
 from app.services.pipeline import run_pipeline, update_document_status
 from app.services.storage import storage_service
 
@@ -99,7 +103,7 @@ async def upload_document(
         original_filename=file.filename or "upload.pdf",
         storage_key=storage_key,
         content_type=file.content_type or "application/pdf",
-        status="uploaded",
+        status=DocumentStatus.uploaded.value,
     )
     session.add(document)
     await session.commit()
@@ -170,47 +174,103 @@ async def get_document_status(
     }
 
 
+@router.patch(
+    "/{document_id}/letter",
+    summary="Update and verify a document's appeal letter",
+)
+async def update_letter(
+    document_id: str,
+    body: LetterUpdateRequest,
+    session: AsyncSession = Depends(get_session),
+) -> dict:
+    """Allow editing a letter and re-verifying it against the bill."""
+    document = await _get_document_or_404(document_id, session)
+    if not document.result_json:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Document has not finished processing yet",
+        )
+
+    bill = ParsedBill.model_validate(document.result_json)
+    is_valid, verified_fields, problems = verify_letter(bill, body.content_markdown)
+
+    bill.letter = Letter(
+        status="edited",
+        content_markdown=body.content_markdown,
+        verified_fields=verified_fields,
+    )
+
+    document.result_json = bill.model_dump(mode="json")
+    session.add(document)
+    await session.commit()
+
+    return {
+        "document_id": document_id,
+        "letter": bill.letter,
+        "is_fully_verified": is_valid,
+        "problems": problems,
+    }
+
+
 async def _process_document_background(
     document_id: str, original_filename: str
 ) -> None:
     """
-    Background task that runs the analysis pipeline and updates the document.
+    Reliable background pipeline.
 
-    Because FastAPI's dependency-injected sessions are request-scoped, this
-    task opens its own session rather than reusing the upload request's session.
+    Guarantees the document always ends in a terminal state:
+    `letter_ready` or `error` — never stuck in `processing`.
+
+    Order of operations on success:
+      1. uploaded → processing
+      2. Run the full pipeline (mock extraction → rules → letter)
+      3. Persist `result_json` FIRST (separate commit)
+      4. Then move to `letter_ready` (separate commit)
+
+    This two-phase commit ensures that even if the status update fails,
+    the result is already durable and the document can be recovered.
     """
     from app.database import AsyncSessionLocal
 
     async with AsyncSessionLocal() as session:
+        document = await session.get(Document, document_id)
+        if not document:
+            logger.error("Background pipeline: document %s not found", document_id)
+            return
+
         try:
-            document = await session.get(Document, document_id)
-            if not document:
-                logger.error(
-                    "Background pipeline: document %s not found", document_id
-                )
-                return
+            # uploaded → processing
+            await update_document_status(
+                session, document, DocumentStatus.processing.value
+            )
 
-            # uploaded -> processing
-            await update_document_status(session, document, "processing")
-
-            # Run the pipeline (mock for now)
+            # Run full pipeline (mock extraction → rules → letter)
             result = await run_pipeline(document_id, original_filename)
 
-            # processing/analyzed -> letter_ready
+            # Persist result FIRST, then move to terminal status.
+            # Two separate commits so a failure in the status transition
+            # never loses the computed result.
             document.result_json = result.model_dump(mode="json")
-            await update_document_status(session, document, "letter_ready")
+            session.add(document)
+            await session.commit()
+            await session.refresh(document)
+
+            await update_document_status(
+                session, document, DocumentStatus.letter_ready.value
+            )
+
+            logger.info("Pipeline succeeded for document %s", document_id)
 
         except Exception as e:
             logger.exception("Pipeline failed for document %s", document_id)
-            # Attempt to mark the document as errored
             try:
                 doc = await session.get(Document, document_id)
                 if doc:
-                    doc.status = "error"
-                    doc.error_message = str(e)
+                    doc.status = DocumentStatus.error.value
+                    doc.error_message = str(e)[:1000]
                     session.add(doc)
                     await session.commit()
             except Exception:
                 logger.exception(
-                    "Failed to update error status for %s", document_id
+                    "Failed to mark document %s as error", document_id
                 )
