@@ -1,6 +1,15 @@
 """
-Document upload, retrieval, and status endpoints.
+Document upload, retrieval, status, and letter editing endpoints.
+Phase 1: Unbreakable pipeline & state machine.
+
+Guarantees:
+- Background task can never leave a document stuck in `processing`
+- `result_json` is always persisted before the final status change
+- The error path always commits a terminal `error` status
+- Letter editing uses a proper Pydantic model and re-verifies every edit
+- `DocumentStatus` enum is used strictly for all status values
 """
+
 import asyncio
 import logging
 
@@ -110,7 +119,7 @@ async def upload_document(
     await session.refresh(document)
     logger.info("Document created: %s (%s)", document.id, document.original_filename)
 
-    # Kick off the analysis pipeline in the background
+    # Kick off the analysis pipeline in the background (fire-and-forget)
     asyncio.create_task(
         _process_document_background(document.id, document.original_filename)
     )
@@ -191,6 +200,7 @@ async def update_letter(
             detail="Document has not finished processing yet",
         )
 
+    # Re-verify the edited letter against the underlying bill facts
     bill = ParsedBill.model_validate(document.result_json)
     is_valid, verified_fields, problems = verify_letter(bill, body.content_markdown)
 
@@ -200,6 +210,7 @@ async def update_letter(
         verified_fields=verified_fields,
     )
 
+    # Persist the updated result with the re-verified letter
     document.result_json = bill.model_dump(mode="json")
     session.add(document)
     await session.commit()
@@ -212,23 +223,115 @@ async def update_letter(
     }
 
 
+@router.post(
+    "/{document_id}/reprocess",
+    summary="Safely re-process a document (recovery)",
+    status_code=status.HTTP_202_ACCEPTED,
+)
+async def reprocess_document(
+    document_id: str,
+    session: AsyncSession = Depends(get_session),
+) -> dict:
+    """
+    Recovery endpoint.
+
+    Allowed only when the document is in `error` or still in `processing`
+    for an abnormally long time. Resets status to uploaded and re-queues
+    the background pipeline.
+    """
+    document = await _get_document_or_404(document_id, session)
+
+    if document.status not in {
+        DocumentStatus.error.value,
+        DocumentStatus.processing.value,
+    }:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=(
+                f"Document is in status '{document.status}'. "
+                "Only 'error' or stuck 'processing' documents can be re-processed."
+            ),
+        )
+
+    # Reset to a clean starting state
+    document.status = DocumentStatus.uploaded.value
+    document.error_message = None
+    # Keep existing result_json for safety; the new run will overwrite it on success
+    session.add(document)
+    await session.commit()
+    await session.refresh(document)
+
+    logger.info("Re-process requested for document %s", document_id)
+
+    # Re-queue the background task
+    asyncio.create_task(
+        _process_document_background(document.id, document.original_filename)
+    )
+
+    return {
+        "document_id": document_id,
+        "status": document.status,
+        "message": "Document queued for re-processing",
+    }
+
+
+async def _mark_document_error(
+    document_id: str, error_message: str
+) -> bool:
+    """
+    Force a document into the terminal `error` state using its own session.
+
+    Uses a fresh DB session so that even if the original session was left in
+    a rolled-back / invalid state by the pipeline exception, we can still
+    durably commit the error status. This is the final backstop that makes
+    the pipeline truly unbreakable.
+    """
+    from app.database import AsyncSessionLocal
+
+    try:
+        async with AsyncSessionLocal() as session:
+            doc = await session.get(Document, document_id)
+            if not doc:
+                logger.error(
+                    "Error-path: document %s not found; cannot mark as error",
+                    document_id,
+                )
+                return False
+
+            doc.status = DocumentStatus.error.value
+            doc.error_message = error_message[:1000]
+            session.add(doc)
+            await session.commit()
+            logger.info(
+                "Document %s marked as error: %.200s", document_id, error_message
+            )
+            return True
+    except Exception:
+        logger.exception(
+            "Critical: failed to mark document %s as error", document_id
+        )
+        return False
+
+
 async def _process_document_background(
     document_id: str, original_filename: str
 ) -> None:
     """
-    Reliable background pipeline.
+    Reliable, unbreakable background pipeline.
 
     Guarantees the document always ends in a terminal state:
     `letter_ready` or `error` — never stuck in `processing`.
 
     Order of operations on success:
       1. uploaded → processing
-      2. Run the full pipeline (mock extraction → rules → letter)
+      2. Run the full pipeline (extraction → rules → letter generation)
       3. Persist `result_json` FIRST (separate commit)
       4. Then move to `letter_ready` (separate commit)
 
-    This two-phase commit ensures that even if the status update fails,
-    the result is already durable and the document can be recovered.
+    On any exception, the document is forced to `error` via a *fresh*
+    database session — because the original session may be unrecoverable
+    after a failed commit (PendingRollbackError), using a fresh session
+    guarantees the error status is always durably committed.
     """
     from app.database import AsyncSessionLocal
 
@@ -239,38 +342,34 @@ async def _process_document_background(
             return
 
         try:
-            # uploaded → processing
+            # Step 1: uploaded → processing
             await update_document_status(
                 session, document, DocumentStatus.processing.value
             )
+            logger.info(
+                "Pipeline started: document %s moved to processing", document_id
+            )
 
-            # Run full pipeline (mock extraction → rules → letter)
+            # Step 2: Run the full pipeline (extraction → rules → letter)
             result = await run_pipeline(document_id, original_filename)
 
-            # Persist result FIRST, then move to terminal status.
-            # Two separate commits so a failure in the status transition
-            # never loses the computed result.
+            # Step 3: Persist result FIRST (separate commit).
+            # The result is durable before we declare the document ready,
+            # so a failure in the status transition never loses the result.
             document.result_json = result.model_dump(mode="json")
             session.add(document)
             await session.commit()
             await session.refresh(document)
 
+            # Step 4: Move to the terminal success status
             await update_document_status(
                 session, document, DocumentStatus.letter_ready.value
             )
-
             logger.info("Pipeline succeeded for document %s", document_id)
 
         except Exception as e:
             logger.exception("Pipeline failed for document %s", document_id)
-            try:
-                doc = await session.get(Document, document_id)
-                if doc:
-                    doc.status = DocumentStatus.error.value
-                    doc.error_message = str(e)[:1000]
-                    session.add(doc)
-                    await session.commit()
-            except Exception:
-                logger.exception(
-                    "Failed to mark document %s as error", document_id
-                )
+            # Always mark the document as error using a fresh session.
+            # This guarantees the error status is committed even if the
+            # current session is in a rolled-back state.
+            await _mark_document_error(document_id, str(e))

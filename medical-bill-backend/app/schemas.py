@@ -47,6 +47,7 @@ class AppealPrediction(BaseModel):
     success_probability: float
     confidence_interval: List[float]
     top_factors: List[str] = []
+    model_version: Optional[str] = None
 
 
 class Letter(BaseModel):
@@ -104,14 +105,24 @@ class DocumentDetailResponse(DocumentResponse):
 
 
 class LetterUpdateRequest(BaseModel):
-    """Request body for PATCH /documents/{id}/letter."""
+    """Request body for PATCH /documents/{id}/letter.
 
-    content_markdown: str = Field(..., min_length=1)
+    The server re-verifies the submitted letter against the underlying
+    bill facts on every edit, so the content is constrained to be
+    non-empty and of a reasonable maximum length.
+    """
+
+    content_markdown: str = Field(
+        ...,
+        min_length=1,
+        max_length=64_000,
+        description="Updated letter content in markdown format",
+    )
 
 
 class HealthResponse(BaseModel):
     status: str
-    environment: str
+    service: str
     version: str
-    rules_engine: Optional[dict] = None
-    llm_enabled: Optional[bool] = None
+    environment: str
+    dependencies: dict

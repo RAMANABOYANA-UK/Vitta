@@ -22,6 +22,11 @@ class Settings(BaseSettings):
     RULES_ENGINE_TIMEOUT_SECONDS: float = 5.0
     RULES_ENGINE_ENABLED: bool = True
 
+    # Member 2 – Extraction + XGBoost scoring service
+    EXTRACTION_SERVICE_URL: str = "http://localhost:8001"
+    EXTRACTION_SERVICE_TIMEOUT_SECONDS: float = 30.0
+    EXTRACTION_SERVICE_ENABLED: bool = False
+
     # LLM letter generation settings
     LLM_ENABLED: bool = True
     LLM_PROVIDER: str = "openai"

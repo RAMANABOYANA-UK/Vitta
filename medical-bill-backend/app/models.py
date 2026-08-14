@@ -5,6 +5,8 @@ from sqlmodel import SQLModel, Field, Column, JSON
 from sqlalchemy import DateTime, func
 import uuid
 
+from app.schemas import DocumentStatus
+
 
 class Document(SQLModel, table=True):
     """Database model for an uploaded medical bill document."""
@@ -16,8 +18,8 @@ class Document(SQLModel, table=True):
     storage_key: str
     content_type: str
     status: str = Field(
-        default="uploaded"
-    )  # uploaded | processing | analyzed | letter_ready | error
+        default=DocumentStatus.uploaded.value
+    )
     result_json: Optional[dict] = Field(default=None, sa_column=Column(JSON))
     error_message: Optional[str] = None
     created_at: datetime = Field(
