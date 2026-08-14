@@ -47,6 +47,7 @@ class AppealPrediction(BaseModel):
     success_probability: float
     confidence_interval: List[float]
     top_factors: List[str] = []
+    model_version: Optional[str] = None
 
 
 class Letter(BaseModel):
@@ -121,7 +122,7 @@ class LetterUpdateRequest(BaseModel):
 
 class HealthResponse(BaseModel):
     status: str
-    environment: str
+    service: str
     version: str
-    rules_engine: Optional[dict] = None
-    llm_enabled: Optional[bool] = None
+    environment: str
+    dependencies: dict

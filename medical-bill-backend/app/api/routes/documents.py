@@ -223,6 +223,58 @@ async def update_letter(
     }
 
 
+@router.post(
+    "/{document_id}/reprocess",
+    summary="Safely re-process a document (recovery)",
+    status_code=status.HTTP_202_ACCEPTED,
+)
+async def reprocess_document(
+    document_id: str,
+    session: AsyncSession = Depends(get_session),
+) -> dict:
+    """
+    Recovery endpoint.
+
+    Allowed only when the document is in `error` or still in `processing`
+    for an abnormally long time. Resets status to uploaded and re-queues
+    the background pipeline.
+    """
+    document = await _get_document_or_404(document_id, session)
+
+    if document.status not in {
+        DocumentStatus.error.value,
+        DocumentStatus.processing.value,
+    }:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=(
+                f"Document is in status '{document.status}'. "
+                "Only 'error' or stuck 'processing' documents can be re-processed."
+            ),
+        )
+
+    # Reset to a clean starting state
+    document.status = DocumentStatus.uploaded.value
+    document.error_message = None
+    # Keep existing result_json for safety; the new run will overwrite it on success
+    session.add(document)
+    await session.commit()
+    await session.refresh(document)
+
+    logger.info("Re-process requested for document %s", document_id)
+
+    # Re-queue the background task
+    asyncio.create_task(
+        _process_document_background(document.id, document.original_filename)
+    )
+
+    return {
+        "document_id": document_id,
+        "status": document.status,
+        "message": "Document queued for re-processing",
+    }
+
+
 async def _mark_document_error(
     document_id: str, error_message: str
 ) -> bool:
