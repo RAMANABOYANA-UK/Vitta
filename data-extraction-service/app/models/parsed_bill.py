@@ -223,6 +223,14 @@ class LineItem(BaseModel):
         description="Result of amount reconciliation for this line",
     )
 
+    @property
+    def cpt_hcpcs_code(self) -> Optional[str]:
+        return self.cpt_hcpcs
+
+    @cpt_hcpcs_code.setter
+    def cpt_hcpcs_code(self, value: Optional[str]) -> None:
+        self.cpt_hcpcs = value
+
 
 # ---------------------------------------------------------------------------
 # Totals — matches the Vitta contract + extensions
@@ -255,6 +263,22 @@ class Totals(BaseModel):
     reconciliation: Optional[Dict[str, Any]] = Field(
         default=None, description="Result of totals reconciliation"
     )
+
+    @property
+    def billed_total(self) -> float:
+        return self.billed
+
+    @billed_total.setter
+    def billed_total(self, value: float) -> None:
+        self.billed = value
+
+    @property
+    def patient_responsibility_total(self) -> Optional[float]:
+        return self.patient_responsibility
+
+    @patient_responsibility_total.setter
+    def patient_responsibility_total(self, value: Optional[float]) -> None:
+        self.patient_responsibility = value
 
 
 # ---------------------------------------------------------------------------

@@ -112,10 +112,17 @@
   align-items: center;
   gap: 11px;
   padding: 10px 8px;
+  border-radius: var(--radius-md);
+  transition: background 0.2s ease;
+  overflow: hidden;
 }
-.user-row .avatar { width: 34px; height: 34px; font-size: 13px; }
-.user-row strong { display: block; font-size: 13.5px; color: var(--slate-100); line-height: 1.3; }
-.user-row span { font-size: 12px; color: var(--slate-500); }
+.user-row:hover {
+  background: rgba(255, 255, 255, 0.05);
+}
+.user-row .avatar { width: 34px; height: 34px; font-size: 13px; flex-shrink: 0; }
+.user-row div { min-width: 0; overflow: hidden; flex: 1; }
+.user-row strong { display: block; font-size: 13.5px; color: var(--slate-100); line-height: 1.3; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.user-row span { font-size: 11.5px; color: var(--slate-400); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: block; }
 
 /* ---------- Main area ---------- */
 .app-main { flex: 1; min-width: 0; display: flex; flex-direction: column; }

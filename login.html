@@ -1,0 +1,418 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="description" content="Sign in to Vitta — AI Medical Bill & Insurance Claim Navigator." />
+  <title>Vitta — Sign In</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="css/styles.css" />
+  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%230d9488'/%3E%3Cpath d='M10 16l4 4 8-9' stroke='white' stroke-width='3' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E" />
+  <style>
+    :root {
+      --auth-bg: #0f172a;
+      --auth-card: rgba(30, 41, 59, 0.75);
+      --auth-border: rgba(255, 255, 255, 0.1);
+      --primary-teal: #0d9488;
+      --primary-hover: #0f766e;
+      --text-main: #f8fafc;
+      --text-muted: #94a3b8;
+    }
+
+    body.auth-page {
+      background: radial-gradient(circle at 50% 0%, #1e293b 0%, #0f172a 70%);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      color: var(--text-main);
+      font-family: 'Inter', sans-serif;
+      margin: 0;
+    }
+
+    .auth-container {
+      flex: 1;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 40px 20px;
+    }
+
+    .auth-card {
+      width: 100%;
+      max-width: 440px;
+      background: var(--auth-card);
+      backdrop-filter: blur(16px);
+      -webkit-backdrop-filter: blur(16px);
+      border: 1px solid var(--auth-border);
+      border-radius: 20px;
+      padding: 40px;
+      box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
+    }
+
+    .auth-header {
+      text-align: center;
+      margin-bottom: 32px;
+    }
+
+    .auth-brand {
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
+      text-decoration: none;
+      color: #fff;
+      font-weight: 800;
+      font-size: 1.5rem;
+      margin-bottom: 16px;
+    }
+
+    .auth-brand svg {
+      width: 32px;
+      height: 32px;
+      color: var(--primary-teal);
+    }
+
+    .auth-title {
+      font-size: 1.5rem;
+      font-weight: 700;
+      margin: 0 0 8px;
+    }
+
+    .auth-sub {
+      color: var(--text-muted);
+      font-size: 0.9rem;
+      margin: 0;
+    }
+
+    .auth-tabs {
+      display: flex;
+      background: rgba(15, 23, 42, 0.6);
+      padding: 4px;
+      border-radius: 10px;
+      margin-bottom: 24px;
+      border: 1px solid rgba(255, 255, 255, 0.05);
+    }
+
+    .auth-tab {
+      flex: 1;
+      padding: 10px;
+      border: none;
+      background: transparent;
+      color: var(--text-muted);
+      font-weight: 600;
+      font-size: 0.9rem;
+      border-radius: 8px;
+      cursor: pointer;
+      transition: all 0.2s ease;
+    }
+
+    .auth-tab.active {
+      background: var(--primary-teal);
+      color: #fff;
+      box-shadow: 0 4px 12px rgba(13, 148, 136, 0.3);
+    }
+
+    .social-btns {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+      margin-bottom: 24px;
+    }
+
+    .btn-social {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      padding: 10px 16px;
+      background: rgba(255, 255, 255, 0.05);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      border-radius: 10px;
+      color: var(--text-main);
+      font-size: 0.875rem;
+      font-weight: 500;
+      cursor: pointer;
+      transition: all 0.2s ease;
+    }
+
+    .btn-social:hover {
+      background: rgba(255, 255, 255, 0.1);
+      border-color: rgba(255, 255, 255, 0.2);
+    }
+
+    .divider {
+      display: flex;
+      align-items: center;
+      margin: 24px 0;
+      color: var(--text-muted);
+      font-size: 0.8rem;
+    }
+
+    .divider::before, .divider::after {
+      content: "";
+      flex: 1;
+      height: 1px;
+      background: rgba(255, 255, 255, 0.1);
+    }
+
+    .divider span {
+      padding: 0 12px;
+    }
+
+    .form-group {
+      margin-bottom: 20px;
+    }
+
+    .form-label {
+      display: block;
+      font-size: 0.85rem;
+      font-weight: 600;
+      color: var(--text-main);
+      margin-bottom: 6px;
+    }
+
+    .form-input-wrap {
+      position: relative;
+    }
+
+    .form-input {
+      width: 100%;
+      padding: 12px 14px;
+      background: rgba(15, 23, 42, 0.8);
+      border: 1px solid rgba(255, 255, 255, 0.15);
+      border-radius: 10px;
+      color: #fff;
+      font-size: 0.95rem;
+      box-sizing: border-box;
+      transition: all 0.2s ease;
+    }
+
+    .form-input:focus {
+      outline: none;
+      border-color: var(--primary-teal);
+      box-shadow: 0 0 0 3px rgba(13, 148, 136, 0.25);
+    }
+
+    .form-options {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-size: 0.85rem;
+      margin-bottom: 24px;
+    }
+
+    .remember-me {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      color: var(--text-muted);
+      cursor: pointer;
+    }
+
+    .forgot-link {
+      color: var(--primary-teal);
+      text-decoration: none;
+      font-weight: 500;
+    }
+
+    .forgot-link:hover {
+      text-decoration: underline;
+    }
+
+    .btn-submit {
+      width: 100%;
+      padding: 12px;
+      background: var(--primary-teal);
+      border: none;
+      border-radius: 10px;
+      color: #fff;
+      font-size: 1rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.2s ease;
+      box-shadow: 0 4px 14px rgba(13, 148, 136, 0.4);
+    }
+
+    .btn-submit:hover {
+      background: var(--primary-hover);
+      transform: translateY(-1px);
+    }
+
+    .demo-box {
+      margin-top: 24px;
+      padding: 16px;
+      background: rgba(13, 148, 136, 0.1);
+      border: 1px dashed rgba(13, 148, 136, 0.4);
+      border-radius: 10px;
+      text-align: center;
+    }
+
+    .demo-btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      margin-top: 8px;
+      padding: 8px 14px;
+      background: rgba(13, 148, 136, 0.2);
+      border: 1px solid rgba(13, 148, 136, 0.4);
+      border-radius: 6px;
+      color: #5eead4;
+      font-size: 0.85rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.2s ease;
+    }
+
+    .demo-btn:hover {
+      background: rgba(13, 148, 136, 0.35);
+      color: #fff;
+    }
+
+    .auth-footer {
+      text-align: center;
+      color: var(--text-muted);
+      font-size: 0.85rem;
+      margin-top: 24px;
+    }
+
+    .auth-footer a {
+      color: var(--primary-teal);
+      text-decoration: none;
+    }
+  </style>
+</head>
+<body class="auth-page">
+
+  <div class="auth-container">
+    <div class="auth-card">
+      
+      <div class="auth-header">
+        <a href="index.html" class="auth-brand">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M12 3l7 4v5c0 4.6-3 7.6-7 9-4-1.4-7-4.4-7-9V7l7-4z"/>
+            <path d="M9 12l2 2 4-4.5"/>
+          </svg>
+          Vitta
+        </a>
+        <h1 class="auth-title" id="authTitle">Welcome back</h1>
+        <p class="auth-sub" id="authSub">Sign in to manage your bills and appeal claims</p>
+      </div>
+
+      <div class="auth-tabs">
+        <button class="auth-tab active" id="tabSignin" onclick="switchTab('signin')">Sign In</button>
+        <button class="auth-tab" id="tabSignup" onclick="switchTab('signup')">Create Account</button>
+      </div>
+
+      <div class="social-btns">
+        <button class="btn-social" onclick="handleSocial('Google')">
+          <svg width="18" height="18" viewBox="0 0 24 24"><path fill="#ea4335" d="M12 5c1.6 0 3 .6 4.1 1.6l3.1-3.1C17.3 1.7 14.8 1 12 1 7.5 1 3.7 3.6 1.9 7.3l3.7 2.9C6.5 7.3 9 5 12 5z"/><path fill="#4285f4" d="M23.5 12.3c0-.8-.1-1.6-.2-2.3H12v4.5h6.5c-.3 1.5-1.1 2.8-2.4 3.7l3.7 2.9c2.2-2 3.7-5 3.7-8.8z"/><path fill="#fbbc05" d="M5.6 14.8c-.3-.8-.4-1.8-.4-2.8s.1-2 .4-2.8L1.9 6.3C.7 8.7 0 10.3 0 12s.7 3.3 1.9 5.7l3.7-2.9z"/><path fill="#34a853" d="M12 23c3.2 0 6-1.1 8-3l-3.7-2.9c-1.1.7-2.5 1.2-4.3 1.2-3 0-5.5-2.3-6.4-5.2L1.9 16C3.7 19.7 7.5 23 12 23z"/></svg>
+          Google
+        </button>
+        <button class="btn-social" onclick="handleSocial('Apple')">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M18.71 19.5c-.83 1.24-1.71 2.45-3.05 2.47-1.34.03-1.77-.79-3.29-.79-1.53 0-2 .77-3.27.82-1.31.05-2.3-1.32-3.14-2.53C4.25 17 2.94 12.45 4.7 9.39c.87-1.52 2.43-2.48 4.12-2.51 1.28-.02 2.5.87 3.29.87.78 0 2.26-1.07 3.81-.91.65.03 2.47.26 3.64 1.98-.09.06-2.17 1.28-2.15 3.81.03 3.02 2.65 4.03 2.68 4.04-.03.07-.42 1.44-1.38 2.83M15.97 6.35c.67-.82 1.13-1.95.99-3.09-.97.04-2.15.65-2.85 1.47-.6.7-1.14 1.84-.99 2.97 1.09.08 2.19-.53 2.85-1.35z"/></svg>
+          Apple
+        </button>
+      </div>
+
+      <div class="divider">
+        <span>or sign in with email</span>
+      </div>
+
+      <form id="authForm" onsubmit="handleSubmit(event)">
+        <div class="form-group" id="nameGroup" style="display: none;">
+          <label class="form-label" for="inputName">Full Name</label>
+          <div class="form-input-wrap">
+            <input type="text" id="inputName" class="form-input" placeholder="Alex Sharma" />
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label class="form-label" for="inputEmail">Email Address</label>
+          <div class="form-input-wrap">
+            <input type="email" id="inputEmail" class="form-input" placeholder="alex.sharma@vitta.ai" required value="alex.sharma@vitta.ai" />
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label class="form-label" for="inputPassword">Password</label>
+          <div class="form-input-wrap">
+            <input type="password" id="inputPassword" class="form-input" placeholder="••••••••" required value="demo123456" />
+          </div>
+        </div>
+
+        <div class="form-options">
+          <label class="remember-me">
+            <input type="checkbox" id="rememberMe" checked /> Remember me
+          </label>
+          <a href="#" class="forgot-link" onclick="alert('Password reset link sent to your email!')">Forgot password?</a>
+        </div>
+
+        <button type="submit" class="btn-submit" id="btnSubmit">Sign In to Dashboard</button>
+      </form>
+
+      <div class="demo-box">
+        <div style="font-size: 0.85rem; color: #cbd5e1;">Testing the platform? Use the pre-filled demo account:</div>
+        <button class="demo-btn" onclick="fillDemoAndSubmit()">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+          Quick Sign In (Alex Sharma)
+        </button>
+      </div>
+
+      <div class="auth-footer">
+        By signing in, you agree to Vitta's <a href="#">Terms of Service</a> and <a href="#">Privacy Policy</a>.
+      </div>
+
+    </div>
+  </div>
+
+  <script>
+    let mode = 'signin';
+
+    function switchTab(tab) {
+      mode = tab;
+      document.getElementById('tabSignin').classList.toggle('active', tab === 'signin');
+      document.getElementById('tabSignup').classList.toggle('active', tab === 'signup');
+      document.getElementById('nameGroup').style.display = tab === 'signup' ? 'block' : 'none';
+      document.getElementById('authTitle').textContent = tab === 'signin' ? 'Welcome back' : 'Create your account';
+      document.getElementById('authSub').textContent = tab === 'signin' ? 'Sign in to manage your bills and appeal claims' : 'Start deciphering bills and saving money today';
+      document.getElementById('btnSubmit').textContent = tab === 'signin' ? 'Sign In to Dashboard' : 'Create Free Account';
+    }
+
+    function handleSocial(provider) {
+      saveUserSession('Alex Sharma', 'alex.sharma@vitta.ai');
+      window.location.href = 'app.html';
+    }
+
+    function handleSubmit(e) {
+      e.preventDefault();
+      const email = document.getElementById('inputEmail').value || 'alex.sharma@vitta.ai';
+      const name = mode === 'signup' 
+        ? (document.getElementById('inputName').value || 'Alex Sharma')
+        : (email.split('@')[0].replace('.', ' ').replace(/(^\w|\s\w)/g, m => m.toUpperCase()) || 'Alex Sharma');
+      
+      saveUserSession(name, email);
+      window.location.href = 'app.html';
+    }
+
+    function fillDemoAndSubmit() {
+      saveUserSession('Alex Sharma', 'alex.sharma@vitta.ai');
+      window.location.href = 'app.html';
+    }
+
+    function saveUserSession(name, email) {
+      const user = {
+        name: name,
+        email: email,
+        plan: 'Plus Plan',
+        scansLeft: 'Unlimited',
+        memberSince: 'August 2024',
+        payer: 'Blue Cross Blue Shield',
+        memberId: 'BCBS-98214-X8',
+        groupNo: 'GRP-55420'
+      };
+      localStorage.setItem('vitta_user', JSON.stringify(user));
+    }
+  </script>
+</body>
+</html>
