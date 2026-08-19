@@ -74,14 +74,23 @@ User Experience
 
 ```
 Vitta/
-├── medical-bill-backend/          # Main API, pipeline, letter generation
-├── bill_rules/                    # Deterministic rules engine (Rust)
-├── data-extraction-service/       # Extraction, validation, and ML models
-├── index.html / app.html / css/ js/  # Frontend
-└── README.md
+├── frontend/                      # All UI (HTML, CSS, JS)
+├── medical-bill-backend/          # Member 3 API + pipeline + letters
+├── data-extraction-service/       # Member 2 extraction + ML
+├── bill_rules/                    # Member 3 Rust rules engine
+├── README.md
+└── .gitignore
 ```
 
 ## Services
+
+### Frontend (`frontend/`)
+Static HTML, CSS, and JS. Open `index.html` directly in a browser, or serve with any HTTP server:
+```bash
+cd frontend
+python -m http.server 8080
+```
+See `frontend/README.md` for details.
 
 ### Main Backend (`medical-bill-backend`)
 - FastAPI
@@ -147,7 +156,16 @@ cargo run
 # http://localhost:3001
 ```
 
-### 2. Main Backend
+### 2. Member 2 Extraction Service
+```bash
+cd data-extraction-service
+python -m venv .venv
+source .venv/bin/activate          # Windows: .venv\Scripts\activate
+pip install -r requirements.txt
+uvicorn app.main:app --reload --port 8001
+```
+
+### 3. Main Backend
 ```bash
 cd medical-bill-backend
 python -m venv venv
@@ -157,17 +175,12 @@ cp .env.example .env
 uvicorn app.main:app --reload --port 8000
 ```
 
-### 3. Extraction Service
-```bash
-cd data-extraction-service
-python -m venv .venv
-source .venv/bin/activate
-pip install -r requirements.txt
-uvicorn app.main:app --reload --port 8001
-```
-
 ### 4. Frontend
-Open `index.html` or `app.html`, or serve the static files with any simple HTTP server.
+```bash
+cd frontend
+python -m http.server 8080
+# http://localhost:8080
+```
 
 ## Design Philosophy
 

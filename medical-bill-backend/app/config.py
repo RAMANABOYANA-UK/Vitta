@@ -15,7 +15,6 @@ class Settings(BaseSettings):
 
     # Pipeline settings
     PIPELINE_DELAY_SECONDS: float = 3.0
-    MOCK_PIPELINE: bool = True
 
     # Rust rules engine settings
     RULES_ENGINE_URL: str = "http://localhost:3001"

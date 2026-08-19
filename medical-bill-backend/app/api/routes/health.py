@@ -45,7 +45,10 @@ async def health_check() -> dict:
     if settings.EXTRACTION_SERVICE_ENABLED:
         extraction_status = await _check_url(
             f"{settings.EXTRACTION_SERVICE_URL.rstrip('/')}/health",
-            timeout=settings.EXTRACTION_SERVICE_TIMEOUT_SECONDS,
+            # Dependency liveness check uses a short, fixed timeout —
+            # never the long EXTRACTION_SERVICE_TIMEOUT_SECONDS that is
+            # meant for OCR payload requests.
+            timeout=2.0,
         )
 
     overall = "ok"

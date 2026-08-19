@@ -286,13 +286,6 @@ python scripts/e2e_backend_smoke.py
 
 This checks backend health, calls the Member 2 `/pipeline` endpoint with sample OCR text, and optionally performs a full authenticated multipart upload if a sample file is provided via `SMOKE_SAMPLE_FILE`.
 
-**Full end-to-end smoke test:**
-```bash
-python scripts/e2e_smoke_test.py
-```
-
-This verifies the full journey: health check → upload → processing → letter_ready → audit trail present → letter edit → auth enforcement.
-
 ## Health
 
 ```bash
@@ -330,9 +323,6 @@ Works with AWS S3, MinIO, Cloudflare R2, or any S3-compatible endpoint.
 # Delay simulating the analysis pipeline (seconds)
 PIPELINE_DELAY_SECONDS=3.0
 
-# Use the mock pipeline (true) or real extraction (false, not yet implemented)
-MOCK_PIPELINE=true
-
 # Rust rules engine
 RULES_ENGINE_URL=http://localhost:3001
 RULES_ENGINE_TIMEOUT_SECONDS=5.0
@@ -350,7 +340,7 @@ EXTRACTION_STRICT_MODE=false
 
 ### Rules engine integration
 
-After the mock (or real) extraction generates a `ParsedBill`, the pipeline sends
+After extraction generates a `ParsedBill`, the pipeline sends
 the rules-relevant subset (`document_id`, `status`, `service_date`, `line_items`,
 `totals`) to the Rust service at `POST /apply-rules`. The response's flags are
 merged back into the full bill by line-item id.
@@ -371,7 +361,7 @@ Every document's journey is recorded in the `audit` object attached to the final
 {
   "pipeline_version": "0.3.0",
   "started_at": "2026-08-13T18:08:03+00:00",
-  "extraction_path": "mock",
+  "extraction_path": "member2-v1",
   "text_extraction": {
     "method": "pdf_text",
     "error": null,
