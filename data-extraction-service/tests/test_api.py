@@ -149,3 +149,39 @@ class TestPipelineEndpoint:
         assert len(data["line_items"]) == 1
         assert "pricing_anomaly" in data
         assert "appeal_success" in data
+
+    def test_pipeline_low_quality_ocr_returns_structured_response(self):
+        """Low-quality OCR should still return a structured ParsedBill."""
+        resp = client.post(
+            "/pipeline",
+            json={
+                "raw_ocr_text": (
+                    "Provider: City Medical Group\n"
+                    "NPI: 1234567893\n"
+                    "Claim Number: GX-2025-883241\n"
+                    "Service Date: 07/22/2026\n"
+                    "CPT 99284 ER visit $1,240.00\n"
+                    "Allowed $800.00 Paid $650.00 Patient Resp $150.00\n"
+                    "Denial CO-97 Bundled service\n"
+                    "Total Billed: $1,240.00\n"
+                ),
+                "document_id": "api-pipeline-messy",
+            },
+        )
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["document_id"] == "api-pipeline-messy"
+        assert data["status"] == "analyzed"
+        assert data["source_type"] in ("bill", "eob", "unknown")
+        assert len(data["line_items"]) == 1
+        assert data["line_items"][0]["cpt_hcpcs"] == "99284"
+        assert data["line_items"][0]["charge_amount"] == 1240.0
+        assert data["line_items"][0]["allowed_amount"] == 800.0
+        assert data["line_items"][0]["paid_amount"] == 650.0
+        assert data["line_items"][0]["patient_responsibility"] == 150.0
+        assert "audit" in data
+        assert data["audit"].get("extraction_engine") == "member2-v1"
+
+    def test_pipeline_empty_text_400(self):
+        resp = client.post("/pipeline", json={"raw_ocr_text": "   "})
+        assert resp.status_code == 400

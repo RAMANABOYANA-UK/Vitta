@@ -83,10 +83,11 @@ class ScoringService:
 
                 # If anomalous, raise a flag on the line item (Vitta contract)
                 if is_anomalous:
+                    severity = "warning" if anomaly_prob < 0.85 else "critical"
                     line.flags.append(
                         Flag(
-                            type="price_inflated",
-                            severity="warning",
+                            type="pricing_anomaly",
+                            severity=severity,
                             message=(
                                 f"Charge of ${line.charge_amount:,.2f} is "
                                 f"anomalous relative to regional benchmarks "
@@ -96,7 +97,7 @@ class ScoringService:
                             shap_contribution=round(anomaly_prob, 4),
                         )
                     )
-                    # Add a denial code entry
+                    # Add a denial code entry (normalized to include "code" key)
                     denial_codes.append(
                         {
                             "code": "CO-50",

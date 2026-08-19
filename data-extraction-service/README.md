@@ -93,10 +93,36 @@ python -m scripts.train_models
 ## Running the service
 
 ```bash
-uvicorn app.main:app --reload --port 8000
+uvicorn app.main:app --reload --port 8001
 ```
 
-Interactive API docs: http://localhost:8000/docs
+Interactive API docs: http://localhost:8001/docs
+
+### Required environment variables
+
+| Variable | Required | Description |
+|----------|----------|-------------|
+| `OPENAI_API_KEY` | No | Enables LLM-based extraction. If unset, the service falls back to the offline heuristic parser. |
+| `DATABASE_URL` | No | PostgreSQL connection string for persistence. If unset, the service runs without saving. |
+| `MODELS_DIR` | No | Directory for trained ML models (defaults to `models/`). |
+| `ANOMALY_THRESHOLD` | No | Pricing-anomaly threshold (default `0.7`). |
+| `APPEAL_THRESHOLD_STRONG` | No | Strong-appeal threshold (default `0.7`). |
+| `APPEAL_THRESHOLD_MODERATE` | No | Moderate-appeal threshold (default `0.5`). |
+
+### Example: `/pipeline`
+
+```bash
+curl -X POST http://localhost:8001/pipeline \
+  -H "Content-Type: application/json" \
+  -d '{
+    "document_id": "doc-demo-1",
+    "raw_ocr_text": "Provider: City Medical Group\nNPI: 1234567893\nClaim Number: GX-2025-883241\nService Date: 07/22/2026\nCPT 99284 ER visit $1,240.00\nAllowed $800.00 Paid $650.00 Patient Resp $150.00\nDenial CO-97 Bundled service\nTotal Billed: $1,240.00"
+  }'
+```
+
+The `/pipeline` endpoint runs extract → validate → score in one call and returns a
+contract-aligned `ParsedBill` with `status: "analyzed"` and
+`audit.extraction_engine: "member2-v1"`.
 
 ---
 

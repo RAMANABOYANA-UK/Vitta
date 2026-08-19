@@ -13,6 +13,7 @@ persisted to PostgreSQL (Neon/Supabase-compatible) when a DATABASE_URL is set.
 from __future__ import annotations
 
 import logging
+import uuid
 from typing import Any, Dict, Optional
 
 from fastapi import FastAPI, HTTPException
@@ -20,7 +21,7 @@ from pydantic import BaseModel, Field
 
 from app.config import settings
 from app.db import get_db
-from app.models import ParsedBill
+from app.models import DocumentStatus, ParsedBill
 from app.services import (
     ExtractionRequest,
     ExtractionService,
@@ -192,22 +193,54 @@ class FullPipelineRequest(BaseModel):
 
 @app.post("/pipeline", response_model=ParsedBill, tags=["pipeline"])
 def full_pipeline(req: FullPipelineRequest) -> ParsedBill:
-    """Run extract → validate → score in one call. Useful for demos/tests."""
+    """Run extract → validate → score in one call. Useful for demos/tests.
+
+    On recoverable internal failures, returns a best-effort structured bill
+    with warnings in audit. On total failure, returns HTTP 500 with a clear error.
+    """
     if not req.raw_ocr_text.strip():
         raise HTTPException(status_code=400, detail="raw_ocr_text must not be empty")
 
+    document_id = req.document_id or f"doc-{uuid.uuid4().hex[:12]}"
+
     # 1. Extract
-    draft = _get_extraction().extract(
-        ExtractionRequest(
-            raw_ocr_text=req.raw_ocr_text,
-            layout_json=req.layout_json,
-            document_id=req.document_id,
+    try:
+        draft = _get_extraction().extract(
+            ExtractionRequest(
+                raw_ocr_text=req.raw_ocr_text,
+                layout_json=req.layout_json,
+                document_id=document_id,
+            )
         )
-    )
+    except Exception as exc:  # pragma: no cover - defensive
+        logger.exception("Pipeline extraction failed")
+        raise HTTPException(status_code=500, detail=f"Extraction failed: {exc}")
+
     # 2. Validate
-    validated = _get_validation().validate(draft)
+    try:
+        validated = _get_validation().validate(draft)
+    except Exception as exc:  # pragma: no cover - defensive
+        logger.exception("Pipeline validation failed")
+        # Best-effort: return the draft with a warning in audit
+        draft.audit["pipeline_error"] = f"Validation failed: {exc}"
+        draft.audit["extraction_engine"] = "member2-v1"
+        draft.status = DocumentStatus.error
+        return draft
+
     # 3. Score
-    scored = _get_scoring().score(validated)
+    try:
+        scored = _get_scoring().score(validated)
+    except Exception as exc:  # pragma: no cover - defensive
+        logger.exception("Pipeline scoring failed")
+        # Best-effort: return the validated bill with a warning in audit
+        validated.audit["pipeline_error"] = f"Scoring failed: {exc}"
+        validated.audit["extraction_engine"] = "member2-v1"
+        validated.status = DocumentStatus.analyzed
+        return validated
+
+    # Mark as analyzed per the backend contract
+    scored.status = DocumentStatus.analyzed
+    scored.audit["extraction_engine"] = "member2-v1"
 
     db = get_db()
     if db.connected:

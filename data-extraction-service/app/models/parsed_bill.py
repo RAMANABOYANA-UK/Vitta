@@ -33,6 +33,14 @@ class DocumentType(str, Enum):
     EOB = "eob"
 
 
+class SourceType(str, Enum):
+    """Canonical source type per the backend ParsedBill contract."""
+
+    BILL = "bill"
+    EOB = "eob"
+    UNKNOWN = "unknown"
+
+
 class DocumentStatus(str, Enum):
     uploaded = "uploaded"
     processing = "processing"
@@ -468,8 +476,9 @@ class ParsedBill(BaseModel):
     uploaded_at: datetime = Field(
         default_factory=datetime.utcnow, description="When the document was uploaded"
     )
-    source_type: str = Field(
-        default="ocr_extraction_v0", description="Source of the extraction"
+    source_type: SourceType = Field(
+        default=SourceType.UNKNOWN,
+        description="Canonical source type: bill | eob | unknown",
     )
     patient: Dict[str, Any] = Field(
         default_factory=dict, description="De-identified patient information"

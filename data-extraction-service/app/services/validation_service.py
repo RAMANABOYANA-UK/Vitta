@@ -14,7 +14,7 @@ are raised on line items for any issues found.
 from __future__ import annotations
 
 import logging
-from typing import Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 from app.config import settings
 from app.models import (
@@ -33,6 +33,53 @@ from app.models import (
 from app.services.reference_data import ReferenceDataService, get_reference_data_service
 
 logger = logging.getLogger(__name__)
+
+# Tolerance for amount reconciliation (dollars)
+AMOUNT_TOL = 0.05
+
+
+def reconcile_amounts(
+    line_items: List[Dict[str, Any]], totals: Dict[str, Any]
+) -> List[Dict[str, str]]:
+    """Reconcile line-item amounts against stated totals.
+
+    Returns a list of warning dicts with type/severity/message keys.
+    Never invents missing totals — only checks what is grounded in line items.
+    """
+    warnings: List[Dict[str, str]] = []
+    line_sum = round(
+        sum(float(i.get("charge_amount") or 0) for i in line_items), 2
+    )
+    billed = totals.get("billed")
+    if billed is not None and abs(line_sum - float(billed)) > AMOUNT_TOL:
+        warnings.append(
+            {
+                "type": "amount_mismatch",
+                "severity": "critical",
+                "message": (
+                    f"Line-item charge sum {line_sum} != totals.billed {billed}"
+                ),
+            }
+        )
+
+    for i, item in enumerate(line_items):
+        allowed = item.get("allowed_amount")
+        paid = item.get("paid_amount")
+        pr = item.get("patient_responsibility")
+        if allowed is not None and paid is not None and pr is not None:
+            expected_pr = round(float(allowed) - float(paid), 2)
+            if abs(expected_pr - float(pr)) > AMOUNT_TOL:
+                warnings.append(
+                    {
+                        "type": "line_reconciliation",
+                        "severity": "warning",
+                        "message": (
+                            f"Line {item.get('id', i)} patient_responsibility {pr} "
+                            f"!= allowed-paid {expected_pr}"
+                        ),
+                    }
+                )
+    return warnings
 
 
 class ValidationService:

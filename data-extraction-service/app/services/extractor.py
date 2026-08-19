@@ -42,12 +42,16 @@ from app.models import (
     ParsedBill,
     PlaceOfService,
     Provenance,
+    SourceType,
     Totals,
     WarningSeverity,
 )
 
 logger = logging.getLogger(__name__)
 
+# ---------------------------------------------------------------------------
+# Regex utilities for messy OCR extraction
+# ---------------------------------------------------------------------------
 # Amount-matching pattern: requires a decimal point (medical amounts have cents)
 # or a $ prefix. This avoids matching CPT code digits like "992" from "99214".
 _AMOUNT_RE = re.compile(
@@ -57,11 +61,58 @@ _AMOUNT_RE = re.compile(
 # CPT/HCPCS pattern: 5 chars alphanumeric
 _CPT_RE = re.compile(r"\b([A-Z][0-9]{4}|[0-9]{5})\b")
 
+# Labeled CPT/HCPCS patterns: "CPT 99284", "HCPCS G0463"
+_LABELED_CPT_RE = re.compile(r"\b(?:CPT\s*)?(\d{5})\b", re.IGNORECASE)
+_LABELED_HCPCS_RE = re.compile(r"\b(?:HCPCS\s*)?([A-Z]\d{4})\b", re.IGNORECASE)
+
 # ICD-10 pattern
 _ICD10_RE = re.compile(r"\b([A-Z][0-9]{0,3}(?:\.[0-9]{0,2})?)\b")
 
 # Date patterns (US medical format MM/DD/YYYY most common)
-_DATE_RE = re.compile(r"\b([0-9]{1,2})/([0-9]{1,2})/([0-9]{4})\b")
+_DATE_RE = re.compile(
+    r"\b(\d{1,2}[/-]\d{1,2}[/-]\d{2,4}|\d{4}-\d{2}-\d{2}|"
+    r"(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\s+\d{1,2},?\s+\d{4})\b",
+    re.IGNORECASE,
+)
+
+# Claim number pattern: "Claim #: GX-2025-883241", "Claim No. 123456789"
+_CLAIM_RE = re.compile(
+    r"(?:claim\s*(?:#|no\.?|number)?\s*[:#]?\s*)([A-Z0-9\-]{6,})",
+    re.IGNORECASE,
+)
+
+# Money pattern: $1,240.00 / 1240.00 / 1240
+_MONEY_RE = re.compile(
+    r"\$?\s*([0-9]{1,3}(?:,[0-9]{3})*(?:\.[0-9]{2})|[0-9]+\.[0-9]{2}|[0-9]+)"
+)
+
+
+def find_codes(text: str) -> List[str]:
+    """Find CPT/HCPCS codes in text, de-duplicated preserving order."""
+    codes = []
+    for m in _LABELED_CPT_RE.finditer(text):
+        codes.append(m.group(1))
+    for m in _LABELED_HCPCS_RE.finditer(text):
+        codes.append(m.group(1).upper())
+    seen = set()
+    out = []
+    for c in codes:
+        if c not in seen:
+            seen.add(c)
+            out.append(c)
+    return out
+
+
+def find_amounts(text: str) -> List[float]:
+    """Find monetary amounts in text."""
+    vals = []
+    for m in _MONEY_RE.finditer(text):
+        raw = m.group(1).replace(",", "")
+        try:
+            vals.append(round(float(raw), 2))
+        except ValueError:
+            pass
+    return vals
 
 
 @dataclass
@@ -397,11 +448,16 @@ class ExtractionService:
                 li.code_confidence = conf
             # heuristic lines are never auto-verified
 
+        # Map document type to canonical source type per the backend contract
+        source_type = (
+            SourceType.EOB if doc_type == DocumentType.EOB else SourceType.BILL
+        )
+
         # Build the Vitta-compatible ParsedBill
         return ParsedBill(
             document_id=document_id,
             status=DocumentStatus.processing,
-            source_type="ocr_extraction_v0_heuristic",
+            source_type=source_type,
             service_date=metadata.service_date_start,
             provider={
                 "name": metadata.provider_name,
@@ -461,6 +517,19 @@ class ExtractionService:
             h = hashlib.sha256(raw_acct.encode()).hexdigest()[:10]
             metadata.patient_account_ref = f"acct-{h}"
 
+        # Claim number — store in metadata_confidence as a provenance marker
+        m = _CLAIM_RE.search(text)
+        if m:
+            metadata.metadata_confidence["claim_number"] = FieldConfidence(
+                ocr_confidence=1.0,
+                extraction_confidence=0.7,
+                verified=False,
+                provenance=Provenance(
+                    page=1,
+                    text=m.group(0)[:200],
+                ),
+            )
+
         # Dates
         dates = [
             self._parse_date(m) for m in _DATE_RE.finditer(text)
@@ -485,10 +554,36 @@ class ExtractionService:
 
     @staticmethod
     def _parse_date(m: re.Match) -> Optional[date]:
+        """Parse a date from a regex match, supporting multiple formats:
+        MM/DD/YYYY, MM-DD-YYYY, YYYY-MM-DD, and 'Mon DD, YYYY'."""
+        raw = m.group(0).strip()
         try:
-            return date(int(m.group(3)), int(m.group(1)), int(m.group(2)))
+            # ISO format: YYYY-MM-DD
+            if re.match(r"^\d{4}-\d{2}-\d{2}$", raw):
+                return date.fromisoformat(raw)
+            # Month-name format: 'Jan 15, 2024' or 'January 15 2024'
+            month_match = re.match(
+                r"^([A-Za-z]+)\s+(\d{1,2}),?\s+(\d{4})$", raw
+            )
+            if month_match:
+                month_names = {
+                    "jan": 1, "feb": 2, "mar": 3, "apr": 4, "may": 5, "jun": 6,
+                    "jul": 7, "aug": 8, "sep": 9, "oct": 10, "nov": 11, "dec": 12,
+                }
+                month = month_names.get(month_match.group(1)[:3].lower())
+                if month:
+                    return date(
+                        int(month_match.group(3)),
+                        month,
+                        int(month_match.group(2)),
+                    )
+            # US format: MM/DD/YYYY or MM-DD-YYYY
+            parts = re.split(r"[/-]", raw)
+            if len(parts) == 3:
+                return date(int(parts[2]), int(parts[0]), int(parts[1]))
         except (ValueError, IndexError):
             return None
+        return None
 
     def _parse_line_items(
         self, tokens: List[HeuristicToken], text: str, doc_type: DocumentType
@@ -527,6 +622,8 @@ class ExtractionService:
             units = self._extract_units(window)
             # Date of service
             dos = self._extract_dos(window)
+            # ICD-10 codes in the window (filtered to plausible ICD-10 format)
+            icd10_codes = self._extract_icd10(window)
 
             charge = amounts[0] if len(amounts) > 0 else 0.0
             allowed = amounts[1] if len(amounts) > 1 else None
@@ -546,7 +643,7 @@ class ExtractionService:
                     page=tok.page if tok else 1,
                     description="",
                     cpt_hcpcs=code,
-                    icd10=[],
+                    icd10=icd10_codes,
                     units=units,
                     charge_amount=charge,
                     allowed_amount=allowed,
@@ -636,6 +733,27 @@ class ExtractionService:
             except ValueError:
                 return 1.0
         return 1.0
+
+    def _extract_icd10(self, window: str) -> List[str]:
+        """Extract ICD-10 diagnosis codes from a text window, de-duplicated."""
+        codes = []
+        for m in _ICD10_RE.finditer(window):
+            candidate = m.group(1).upper()
+            # Filter out codes that are actually CPT/HCPCS (5-char alphanumeric)
+            if re.match(r"^[A-Z0-9]{5}$", candidate):
+                continue
+            # Filter out common false positives (e.g. "I10" is valid, but "R" alone is not)
+            if len(candidate) < 2:
+                continue
+            codes.append(candidate)
+        # De-dupe preserving order
+        seen = set()
+        out = []
+        for c in codes:
+            if c not in seen:
+                seen.add(c)
+                out.append(c)
+        return out
 
     def _extract_dos(self, window: str) -> Optional[date]:
         m = _DATE_RE.search(window)

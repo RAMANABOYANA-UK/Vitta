@@ -16,7 +16,7 @@ from app.models import (
     Totals,
     VerificationStatus,
 )
-from app.services.validation_service import ValidationService
+from app.services.validation_service import ValidationService, reconcile_amounts
 
 
 def _make_confidence(verified: bool = False) -> FieldConfidence:
@@ -211,3 +211,45 @@ class TestTotalsReconciliation:
         result = svc.validate(bill)
 
         assert any(w.code == "TOTALS_VS_LINES_MISMATCH" for w in result.warnings)
+
+
+class TestReconcileAmountsHelper:
+    def test_reconcile_amounts_matching(self):
+        """reconcile_amounts should return no warnings when amounts match."""
+        line_items = [
+            {"id": "LI-1", "charge_amount": 200.0, "allowed_amount": 170.0,
+             "paid_amount": 136.0, "patient_responsibility": 34.0}
+        ]
+        totals = {"billed": 200.0}
+        warnings = reconcile_amounts(line_items, totals)
+        assert warnings == []
+
+    def test_reconcile_amounts_line_sum_mismatch(self):
+        """reconcile_amounts should flag line-sum vs totals.billed mismatch."""
+        line_items = [
+            {"id": "LI-1", "charge_amount": 200.0, "allowed_amount": 170.0,
+             "paid_amount": 136.0, "patient_responsibility": 34.0}
+        ]
+        totals = {"billed": 500.0}  # wrong
+        warnings = reconcile_amounts(line_items, totals)
+        assert any(w["type"] == "amount_mismatch" for w in warnings)
+
+    def test_reconcile_amounts_patient_resp_mismatch(self):
+        """reconcile_amounts should flag patient_responsibility mismatch."""
+        line_items = [
+            {"id": "LI-1", "charge_amount": 200.0, "allowed_amount": 170.0,
+             "paid_amount": 136.0, "patient_responsibility": 50.0}  # wrong
+        ]
+        totals = {"billed": 200.0}
+        warnings = reconcile_amounts(line_items, totals)
+        assert any(w["type"] == "line_reconciliation" for w in warnings)
+
+    def test_reconcile_amounts_never_invents_totals(self):
+        """reconcile_amounts should not flag when totals are missing."""
+        line_items = [
+            {"id": "LI-1", "charge_amount": 200.0, "allowed_amount": 170.0,
+             "paid_amount": 136.0, "patient_responsibility": 34.0}
+        ]
+        totals = {}  # no billed total
+        warnings = reconcile_amounts(line_items, totals)
+        assert warnings == []
