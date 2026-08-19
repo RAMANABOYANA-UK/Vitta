@@ -36,9 +36,10 @@ async def main() -> int:
         r.raise_for_status()
         health = r.json()
         print(f"    Status: {health.get('status')}")
-        print(f"    Rules engine: {health.get('dependencies', {}).get('rules_engine', {}).get('status')}")
-        print(f"    LLM configured: {health.get('dependencies', {}).get('llm', {}).get('configured')}")
-        print(f"    Auth enabled: {health.get('dependencies', {}).get('auth', {}).get('enabled')}")
+        print(f"    Rules engine: {health.get('rules_engine', {}).get('status')}")
+        print(f"    Extraction service: {health.get('extraction_service', {}).get('status')}")
+        print(f"    LLM enabled: {health.get('llm_enabled')}")
+        print(f"    Auth enabled: {health.get('auth_enabled')}")
 
         # 2. Upload a tiny dummy file (with auth)
         print("\n[2] Uploading test document...")

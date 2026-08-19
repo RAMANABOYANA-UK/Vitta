@@ -21,6 +21,7 @@ modules = [
     "app.services.rules_engine",
     "app.services.storage",
     "app.core.security",
+    "app.api.routes.auth",
     "app.api.routes.documents",
     "app.api.routes.health",
 ]

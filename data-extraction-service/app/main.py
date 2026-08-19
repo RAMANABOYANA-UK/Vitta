@@ -5,6 +5,7 @@ Endpoints:
   POST /extract   — raw OCR text + layout JSON in → draft ParsedBill out
   POST /validate  — draft ParsedBill in → validated ParsedBill out
   POST /score     — validated ParsedBill in → scored ParsedBill out (with SHAP)
+  POST /pipeline  — convenience: extract → validate → score in one call
 
 Each endpoint is independently callable and retryable. Validated results are
 persisted to PostgreSQL (Neon/Supabase-compatible) when a DATABASE_URL is set.
@@ -19,7 +20,6 @@ from typing import Any, Dict, Optional
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, Field
 
-from app.config import settings
 from app.db import get_db
 from app.models import DocumentStatus, ParsedBill
 from app.services import (
@@ -110,6 +110,21 @@ def _get_scoring() -> ScoringService:
     return _scoring_service
 
 
+def _normalize_denial_codes(bill: ParsedBill) -> ParsedBill:
+    """Ensure every denial code dict has a 'code' key (carc/reason_code fallback)."""
+    normalized = []
+    for d in bill.denial_codes:
+        if not isinstance(d, dict):
+            continue
+        code = d.get("code") or d.get("carc") or d.get("reason_code")
+        item = dict(d)
+        if code:
+            item["code"] = str(code)
+        normalized.append(item)
+    bill.denial_codes = normalized
+    return bill
+
+
 # ---------------------------------------------------------------------------
 # Endpoints
 # ---------------------------------------------------------------------------
@@ -174,6 +189,9 @@ def score(req: ScoreRequest) -> ParsedBill:
         logger.exception("Scoring failed")
         raise HTTPException(status_code=500, detail=f"Scoring failed: {exc}")
 
+    # Normalize denial codes
+    scored = _normalize_denial_codes(scored)
+
     # Persist scored result to PostgreSQL (if configured)
     db = get_db()
     if db.connected:
@@ -195,8 +213,17 @@ class FullPipelineRequest(BaseModel):
 def full_pipeline(req: FullPipelineRequest) -> ParsedBill:
     """Run extract → validate → score in one call. Useful for demos/tests.
 
-    On recoverable internal failures, returns a best-effort structured bill
-    with warnings in audit. On total failure, returns HTTP 500 with a clear error.
+    Guarantees:
+    - Sets status to `analyzed` on success
+    - Sets audit.extraction_engine = "member2-v1"
+    - Normalizes denial codes to {"code": ...} shape
+    - On recoverable internal failures, returns a best-effort structured bill
+      with warnings in audit
+    - On total failure, returns HTTP 500 with a clear error
+
+    Full output includes: document_id, status, source_type, patient, provider,
+    payer, line_items, totals, denial_codes, appeal_prediction, explanation,
+    letter, audit.
     """
     if not req.raw_ocr_text.strip():
         raise HTTPException(status_code=400, detail="raw_ocr_text must not be empty")
@@ -225,6 +252,7 @@ def full_pipeline(req: FullPipelineRequest) -> ParsedBill:
         draft.audit["pipeline_error"] = f"Validation failed: {exc}"
         draft.audit["extraction_engine"] = "member2-v1"
         draft.status = DocumentStatus.error
+        draft = _normalize_denial_codes(draft)
         return draft
 
     # 3. Score
@@ -236,11 +264,15 @@ def full_pipeline(req: FullPipelineRequest) -> ParsedBill:
         validated.audit["pipeline_error"] = f"Scoring failed: {exc}"
         validated.audit["extraction_engine"] = "member2-v1"
         validated.status = DocumentStatus.analyzed
+        validated = _normalize_denial_codes(validated)
         return validated
 
     # Mark as analyzed per the backend contract
     scored.status = DocumentStatus.analyzed
     scored.audit["extraction_engine"] = "member2-v1"
+
+    # Normalize denial codes to the {"code": ...} shape
+    scored = _normalize_denial_codes(scored)
 
     db = get_db()
     if db.connected:

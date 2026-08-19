@@ -247,6 +247,66 @@ pub const NCCI_UNBUNDLING_PAIRS: &[(&str, &str)] = &[
     ("97110", "97112"), // Therapeutic exercise → neuromuscular reeducation
     ("97112", "97116"), // Neuromuscular reeducation → gait training
     ("97140", "97112"), // Manual therapy → neuromuscular reeducation
+    // --- Additional common NCCI unbundling pairs ---
+    // Injection/infusion services bundled into E/M visits
+    ("96372", "99213"), // Therapeutic injection → E/M level 3
+    ("96372", "99214"), // Therapeutic injection → E/M level 4
+    ("96372", "99215"), // Therapeutic injection → E/M level 5
+    ("96374", "99213"), // IV push, single drug → E/M level 3
+    ("96374", "99214"), // IV push, single drug → E/M level 4
+    ("96374", "99215"), // IV push, single drug → E/M level 5
+    // Simple blood draw bundled into venipuncture and E/M
+    ("99195", "36415"), // Venipuncture, routine → venipuncture, simple
+    // Vaccines bundled into administration codes
+    ("90460", "90471"), // Vaccine admin, first component → immunization admin
+    ("90476", "90460"), // Adenovirus vaccine → vaccine administration
+    ("90658", "90460"), // Influenza vaccine → vaccine administration
+    // EKG interpretation bundled into the EKG with interpretation
+    ("93042", "93000"), // ECG report/review only → ECG with interpretation
+    // Ultrasound guidance bundled into the procedure
+    ("76942", "20610"), // US guidance → joint aspiration
+    ("77012", "10022"), // CT guidance → fine needle aspiration
+    ("77002", "10022"), // Fluoroscopic guidance → fine needle aspiration
+    // Suture removal bundled with E/M
+    ("15850", "99213"), // Suture removal by physician → E/M level 3
+    ("15850", "99214"), // Suture removal by physician → E/M level 4
+    // Nasal packing removal bundled into E/M / epistaxis control
+    ("30903", "30901"), // Nasal packing, recurrent → nasal packing, simple
+    ("30905", "30901"), // Nasal packing, posterior → nasal packing, simple
+    // Skin tag removal bundled into E/M
+    ("11200", "11201"), // Skin tag removal, up to 15 → each additional 10
+    // Foley catheter insertion bundled into E/M
+    ("51702", "99213"), // Foley catheter insertion → E/M level 3
+    ("51702", "99214"), // Foley catheter insertion → E/M level 4
+    // Oxygen saturation bundled into E/M (pulse oximetry)
+    ("94760", "99211"), // Pulse oximetry → E/M level 1
+    ("94761", "99212"), // Pulse oximetry, multiple → E/M level 2
+    // ECGs at rest bundled into higher E/M (already covered above, add 99212)
+    ("93000", "99212"), // Routine ECG → E/M level 2
+    // X-ray multiple views (component → comprehensive)
+    ("73500", "73510"), // Hip X-ray, single view → 2+ views
+    ("73520", "73510"), // Hip X-ray, bilateral → hip X-ray, unilateral
+    ("73000", "73010"), // Clavicle X-ray → scapula X-ray
+    ("72040", "72050"), // Cervical spine, 2-3 views → 4-5 views
+    ("72052", "72050"), // Cervical spine, 6+ views → 4-5 views
+    // Add-on codes bundled into the primary procedure
+    ("88305", "88309"), // Surgical pathology, level V → level VIII
+    ("88307", "88309"), // Surgical pathology, level VI → level VIII
+    // Cardiac catheterization components
+    ("93451", "93458"), // Right heart cath → left heart cath with coronary
+    ("93452", "93458"), // Left heart cath → left heart cath with coronary
+    ("93453", "93458"), // Combined right/left heart cath → with coronary
+    // Pacemaker lead placement bundled
+    ("33206", "33208"), // Pacemaker, atrial → dual chamber
+    ("33207", "33208"), // Pacemaker, ventricular → dual chamber
+    // Endovascular procedures
+    ("36200", "36245"), // Cath, artery, upper extremity → lower extremity
+    ("36215", "36245"), // Cath, artery, upper → lower extremity
+    // Physical therapy — each additional (component bundled)
+    ("97001", "97110"), // PT evaluation → therapeutic exercise
+    ("97002", "97110"), // PT re-evaluation → therapeutic exercise
+    ("97003", "97112"), // OT evaluation → neuromuscular reeducation
+    ("97004", "97112"), // OT re-evaluation → neuromuscular reeducation
 ];
 
 #[cfg(test)]

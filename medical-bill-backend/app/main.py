@@ -3,13 +3,17 @@ FastAPI application entry point for the medical bill analysis platform.
 """
 import logging
 from contextlib import asynccontextmanager
+from datetime import datetime, timedelta, timezone
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from sqlalchemy import select
 
-from app.api.routes import documents, health
+from app.api.routes import auth, documents, health
 from app.config import settings
-from app.database import init_db
+from app.database import AsyncSessionLocal, init_db
+from app.models import Document
+from app.schemas import DocumentStatus
 
 # ---------------------------------------------------------------------------
 # Logging configuration
@@ -23,7 +27,42 @@ logging.basicConfig(
 
 logger = logging.getLogger(__name__)
 
-APP_VERSION = "0.1.0"
+APP_VERSION = "0.3.0"
+
+
+async def sweep_stuck_documents(max_age_minutes: int = 30) -> int:
+    """
+    On startup, mark any documents stuck in `processing` for longer than
+    `max_age_minutes` as `error` so they are never permanently stuck.
+
+    Returns the number of documents marked as error.
+    """
+    cutoff = datetime.now(timezone.utc) - timedelta(minutes=max_age_minutes)
+    marked = 0
+    try:
+        async with AsyncSessionLocal() as session:
+            statement = select(Document).where(
+                Document.status == DocumentStatus.processing.value,
+                Document.updated_at < cutoff,
+            )
+            result = await session.execute(statement)
+            stuck_docs = result.scalars().all()
+            for doc in stuck_docs:
+                doc.status = DocumentStatus.error.value
+                doc.error_message = "Stuck processing timeout"
+                session.add(doc)
+                marked += 1
+            if marked:
+                await session.commit()
+                logger.warning(
+                    "Startup sweep: marked %d stuck document(s) as error",
+                    marked,
+                )
+            else:
+                logger.info("Startup sweep: no stuck documents found")
+    except Exception:
+        logger.exception("Startup sweep failed")
+    return marked
 
 
 @asynccontextmanager
@@ -33,6 +72,8 @@ async def lifespan(app: FastAPI):
     try:
         await init_db()
         logger.info("Database initialized")
+        # Recover stuck documents from previous runs
+        await sweep_stuck_documents()
     except Exception as e:
         logger.error("Failed to initialize database: %s", e)
         raise
@@ -75,6 +116,7 @@ app.add_middleware(
 
 app.include_router(health.router)
 app.include_router(documents.router)
+app.include_router(auth.router)
 
 
 @app.get("/", tags=["root"])

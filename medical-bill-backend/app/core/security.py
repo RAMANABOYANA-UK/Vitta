@@ -3,8 +3,8 @@ Security utilities for the medical bill platform.
 
 Provides:
 - Storage key generation, filename sanitization
-- Simple bearer-token auth for API protection
-- JWT helpers (future-proofing; not yet wired into routes)
+- Bearer-token auth supporting both static AUTH_TOKEN and JWT
+- JWT create/decode helpers
 """
 
 import secrets
@@ -60,6 +60,10 @@ def verify_bearer_token(
     When AUTH_ENABLED=false, this dependency is a no-op (dev mode).
     When AUTH_ENABLED=true, requests must include:
         Authorization: Bearer <AUTH_TOKEN>
+        -or-
+        Authorization: Bearer <JWT>
+
+    JWT tokens are issued via POST /api/v1/auth/token.
     """
     if not settings.AUTH_ENABLED:
         return
@@ -71,7 +75,17 @@ def verify_bearer_token(
             headers={"WWW-Authenticate": "Bearer"},
         )
 
-    if not secrets.compare_digest(credentials.credentials, settings.AUTH_TOKEN):
+    token = credentials.credentials
+
+    # 1) Static dev token
+    if secrets.compare_digest(token, settings.AUTH_TOKEN):
+        return
+
+    # 2) JWT
+    try:
+        decode_jwt_token(token)
+        return
+    except Exception:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid or expired token",
@@ -80,7 +94,7 @@ def verify_bearer_token(
 
 
 # ---------------------------------------------------------------------------
-# JWT helpers (future-proofing; not yet wired into routes)
+# JWT helpers
 # ---------------------------------------------------------------------------
 
 

@@ -25,7 +25,7 @@ class Settings(BaseSettings):
     # Member 2 – Extraction + XGBoost scoring service
     EXTRACTION_SERVICE_URL: str = "http://localhost:8001"
     EXTRACTION_SERVICE_TIMEOUT_SECONDS: float = 30.0
-    EXTRACTION_SERVICE_ENABLED: bool = False
+    EXTRACTION_SERVICE_ENABLED: bool = True
     # When True, extraction failures raise instead of falling back to mock.
     # Only safe in production when Member 2 is guaranteed available.
     EXTRACTION_STRICT_MODE: bool = False
@@ -50,8 +50,8 @@ class Settings(BaseSettings):
     # Static bearer token for simple API protection (dev-friendly).
     # In production, set a strong random value or switch to JWT.
     AUTH_TOKEN: str = "dev-token-change-me"
-    # Optional JWT settings (future-proofing; not used yet)
-    JWT_SECRET: str | None = None
+    # Optional JWT settings (used when a JWT is presented as a bearer token)
+    JWT_SECRET: str = "change-me-too"
     JWT_ALGORITHM: str = "HS256"
     JWT_EXPIRES_MINUTES: int = 60 * 24  # 24 hours
 

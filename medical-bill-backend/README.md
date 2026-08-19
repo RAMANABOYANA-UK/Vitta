@@ -57,7 +57,8 @@ medical-bill-backend/
 │   ├── api/
 │   │   └── routes/
 │   │       ├── documents.py # Upload, get, status, letter, reprocess endpoints
-│   │       └── health.py    # Health check with dependency status
+│   │       ├── health.py    # Health check with dependency status
+│   │       └── auth.py      # Token endpoint (JWT issuance)
 │   ├── services/
 │   │   ├── storage.py       # Local + S3 storage abstraction
 │   │   ├── pipeline.py      # Observable pipeline + status transitions + audit
@@ -70,7 +71,8 @@ medical-bill-backend/
 │   └── core/
 │       └── security.py      # Storage keys, bearer-token auth, JWT helpers
 ├── scripts/
-│   └── e2e_smoke_test.py    # End-to-end smoke test
+│   ├── e2e_smoke_test.py    # End-to-end smoke test (upload → letter)
+│   └── e2e_backend_smoke.py # Backend-only smoke test (no frontend)
 ├── tests/
 │   ├── test_letter_verifier.py
 │   └── test_pipeline_status.py
@@ -137,11 +139,11 @@ cargo run
 # listens on http://localhost:3001
 ```
 
-**Terminal 2 – Extraction service (optional)**
+**Terminal 2 – Member 2 extraction service**
 ```bash
 cd data-extraction-service
-# follow its README, run on port 8001
-# then set EXTRACTION_SERVICE_ENABLED=true in backend .env
+uvicorn app.main:app --reload --port 8001
+# listens on http://localhost:8001
 ```
 
 **Terminal 3 – Backend**
@@ -151,6 +153,8 @@ python -m venv venv
 source venv/bin/activate          # Windows: venv\Scripts\activate
 pip install -r requirements.txt
 cp .env.example .env
+# set EXTRACTION_SERVICE_ENABLED=true (default in .env.example)
+# set AUTH_TOKEN=dev-token-change-me (default)
 uvicorn app.main:app --reload --port 8000
 ```
 
@@ -161,13 +165,28 @@ The API will be available at:
 
 ## Authentication
 
-All document endpoints require a bearer token:
+All protected endpoints accept a bearer token:
 
 ```bash
-# Default dev token (from .env AUTH_TOKEN)
+# Static dev token (from .env AUTH_TOKEN)
 curl -H "Authorization: Bearer dev-token-change-me" \
   http://localhost:8000/api/v1/documents/{id}
 ```
+
+or a JWT issued by the token endpoint:
+
+```bash
+# Issue a JWT
+curl -X POST http://localhost:8000/api/v1/auth/token \
+  -H "Content-Type: application/json" \
+  -d '{"username":"demo","password":"demo123"}'
+
+# Use the returned access_token
+curl -H "Authorization: Bearer <access_token>" \
+  http://localhost:8000/api/v1/documents/{id}
+```
+
+Dev users: `demo/demo123`, `admin/admin123`.
 
 To disable auth entirely (dev only), set `AUTH_ENABLED=false` in `.env`.
 
@@ -183,6 +202,7 @@ python -c "import secrets; print(secrets.token_urlsafe(48))"
 |--------|-----------------------------------|------------------------------------------------|------|
 | GET    | `/`                               | API info                                       | No   |
 | GET    | `/health`                         | Health check with dependency status            | No   |
+| POST   | `/api/v1/auth/token`              | Issue a JWT bearer token                       | No   |
 | POST   | `/api/v1/documents/upload`        | Upload a medical bill (PDF/image)              | Yes  |
 | GET    | `/api/v1/documents/{id}`          | Get document + analysis result                 | Yes  |
 | GET    | `/api/v1/documents/{id}/status`   | Get document processing status                 | Yes  |
@@ -257,8 +277,16 @@ curl -X POST -H "Authorization: Bearer dev-token-change-me" \
 
 This resets the document to `uploaded` and re-queues the pipeline safely. Only documents in `error` or `processing` can be re-processed — terminal `letter_ready` documents are rejected with a 409.
 
-## Smoke Test
+## Smoke Tests
 
+**Backend-only smoke test (no frontend):**
+```bash
+python scripts/e2e_backend_smoke.py
+```
+
+This checks backend health, calls the Member 2 `/pipeline` endpoint with sample OCR text, and optionally performs a full authenticated multipart upload if a sample file is provided via `SMOKE_SAMPLE_FILE`.
+
+**Full end-to-end smoke test:**
 ```bash
 python scripts/e2e_smoke_test.py
 ```
@@ -313,7 +341,9 @@ RULES_ENGINE_ENABLED=true
 # Member 2 extraction
 EXTRACTION_SERVICE_URL=http://localhost:8001
 EXTRACTION_SERVICE_TIMEOUT_SECONDS=30.0
-EXTRACTION_SERVICE_ENABLED=false
+# For local demos, prefer true so the real Member 2 pipeline is exercised.
+# When false, the backend uses the high-quality mock data generator.
+EXTRACTION_SERVICE_ENABLED=true
 # Strict mode: raise on extraction failure instead of falling back to mock
 EXTRACTION_STRICT_MODE=false
 ```
