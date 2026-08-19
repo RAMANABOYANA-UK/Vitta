@@ -92,7 +92,13 @@ def _init_audit() -> Dict[str, Any]:
     }
 
 
-async def run_pipeline(document_id: str, original_filename: str) -> ParsedBill:
+async def run_pipeline(
+    document_id: str,
+    original_filename: str,
+    raw_ocr_text: str | None = None,
+    text_extraction_method: str | None = None,
+    text_extraction_error: str | None = None,
+) -> ParsedBill:
     """
     Fully observable pipeline.
     Every stage records timing, path taken, and key metrics into the audit object.
@@ -100,6 +106,13 @@ async def run_pipeline(document_id: str, original_filename: str) -> ParsedBill:
     logger.info("Pipeline started | document_id=%s", document_id)
     audit = _init_audit()
     t0 = time.perf_counter()
+
+    # Record text extraction info in audit
+    audit["text_extraction"] = {
+        "method": text_extraction_method,
+        "error": text_extraction_error,
+        "chars": len(raw_ocr_text) if raw_ocr_text else 0,
+    }
 
     # Optional demo delay
     if settings.PIPELINE_DELAY_SECONDS > 0:
@@ -112,6 +125,7 @@ async def run_pipeline(document_id: str, original_filename: str) -> ParsedBill:
     result = await extract_and_score(
         document_id=document_id,
         original_filename=original_filename,
+        raw_ocr_text=raw_ocr_text,
     )
     audit["timings_ms"]["extraction"] = round((time.perf_counter() - t_stage) * 1000, 1)
 

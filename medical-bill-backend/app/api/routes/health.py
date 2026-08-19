@@ -91,8 +91,12 @@ async def health_check() -> HealthResponse:
             },
             "llm": {
                 "enabled": settings.LLM_ENABLED,
+                "configured": bool(settings.LLM_API_KEY),
                 "provider": settings.LLM_PROVIDER,
                 "model": settings.LLM_MODEL,
+            },
+            "auth": {
+                "enabled": settings.AUTH_ENABLED,
             },
         },
     )

@@ -1,6 +1,6 @@
 # Medical Bill Analysis Backend
 
-Backend for the AI-powered medical bill analysis platform. This is the **Member 3 core** — a complete, production-minded backend with an unbreakable pipeline, full observability, and a safe recovery path.
+Backend for the AI-powered medical bill analysis platform. This is the **Member 3 core** — a complete, production-minded backend with an unbreakable pipeline, full observability, real document text extraction, and a safe recovery path.
 
 ## Tech Stack
 
@@ -11,6 +11,9 @@ Backend for the AI-powered medical bill analysis platform. This is the **Member 
 - **S3-compatible storage** — local filesystem (default) or S3 (MinIO, AWS, R2)
 - **python-multipart** — file uploads
 - **httpx** — async HTTP client for Rust rules engine + Member 2 service
+- **pypdf** — PDF text extraction
+- **pytesseract / Pillow** — local OCR for images
+- **PyJWT** — JWT helpers (future-proofing)
 
 ## Architecture (Member 3 Core)
 
@@ -18,6 +21,8 @@ Backend for the AI-powered medical bill analysis platform. This is the **Member 
 Upload
   ↓
 [Background Task] — unbreakable state machine
+  ↓
+Document Text Extraction (PDF text / OCR)
   ↓
 Extraction + XGBoost Scoring  ← Member 2 (optional, feature-flagged)
   ↓
@@ -32,8 +37,9 @@ letter_ready (or error)
 
 | Dependency              | If unavailable                          | Behavior                          |
 |-------------------------|-----------------------------------------|-----------------------------------|
+| Document text extraction| PDF has no text / OCR fails             | Pass clear placeholder to Member 2 |
 | Rust rules engine       | Timeout / connection error              | Continue without deterministic flags |
-| Member 2 extraction     | Disabled or unreachable                 | Fall back to high-quality mock    |
+| Member 2 extraction     | Disabled or unreachable                 | Fall back to high-quality mock (dev) or raise (strict mode) |
 | LLM                     | No API key or error                     | Safe template letter              |
 
 The system never crashes the user experience because of a downstream failure.
@@ -55,13 +61,14 @@ medical-bill-backend/
 │   ├── services/
 │   │   ├── storage.py       # Local + S3 storage abstraction
 │   │   ├── pipeline.py      # Observable pipeline + status transitions + audit
+│   │   ├── document_text.py # PDF text extraction + OCR (tesseract/textract/docai)
 │   │   ├── rules_engine.py  # HTTP client for the Rust bill_rules service
 │   │   ├── extraction_client.py  # HTTP client for Member 2 service
 │   │   ├── letter_generator.py   # LLM-grounded appeal letter generation
 │   │   ├── letter_verifier.py    # Programmatic letter fact verification
 │   │   └── mock_data.py     # Realistic mock ParsedBill generator
 │   └── core/
-│       └── security.py      # Storage key generation, filename sanitization
+│       └── security.py      # Storage keys, bearer-token auth, JWT helpers
 ├── scripts/
 │   └── e2e_smoke_test.py    # End-to-end smoke test
 ├── tests/
@@ -81,6 +88,7 @@ medical-bill-backend/
 - Optionally: Docker (for local PostgreSQL) or an existing PostgreSQL instance
 - Optionally: an S3-compatible bucket (MinIO, AWS S3) for production-style storage
 - Optionally: Rust toolchain (for the rules engine)
+- Optionally: Tesseract OCR binary (for image OCR via pytesseract)
 
 ### 2. Configure environment
 
@@ -120,6 +128,8 @@ pip install -r requirements.txt
 
 ## Running Locally
 
+**Run order (exact):**
+
 **Terminal 1 – Rust rules engine**
 ```bash
 cd bill_rules
@@ -127,7 +137,14 @@ cargo run
 # listens on http://localhost:3001
 ```
 
-**Terminal 2 – Backend**
+**Terminal 2 – Extraction service (optional)**
+```bash
+cd data-extraction-service
+# follow its README, run on port 8001
+# then set EXTRACTION_SERVICE_ENABLED=true in backend .env
+```
+
+**Terminal 3 – Backend**
 ```bash
 cd medical-bill-backend
 python -m venv venv
@@ -137,34 +154,46 @@ cp .env.example .env
 uvicorn app.main:app --reload --port 8000
 ```
 
-**Optional – Member 2 service**
-```bash
-cd data-extraction-service
-# follow its README, run on port 8001
-# then set EXTRACTION_SERVICE_ENABLED=true
-```
-
 The API will be available at:
 
 - **Swagger UI:** http://localhost:8000/docs
 - **Health check:** http://localhost:8000/health
 
+## Authentication
+
+All document endpoints require a bearer token:
+
+```bash
+# Default dev token (from .env AUTH_TOKEN)
+curl -H "Authorization: Bearer dev-token-change-me" \
+  http://localhost:8000/api/v1/documents/{id}
+```
+
+To disable auth entirely (dev only), set `AUTH_ENABLED=false` in `.env`.
+
+To generate a strong production token:
+
+```bash
+python -c "import secrets; print(secrets.token_urlsafe(48))"
+```
+
 ## API Endpoints
 
-| Method | Path                              | Description                                    |
-|--------|-----------------------------------|------------------------------------------------|
-| GET    | `/`                               | API info                                       |
-| GET    | `/health`                         | Health check with dependency status            |
-| POST   | `/api/v1/documents/upload`        | Upload a medical bill (PDF/image)              |
-| GET    | `/api/v1/documents/{id}`          | Get document + analysis result                 |
-| GET    | `/api/v1/documents/{id}/status`   | Get document processing status                 |
-| PATCH  | `/api/v1/documents/{id}/letter`   | Update and re-verify a document's appeal letter|
-| POST   | `/api/v1/documents/{id}/reprocess`| Recovery: re-process a stuck/errored document  |
+| Method | Path                              | Description                                    | Auth |
+|--------|-----------------------------------|------------------------------------------------|------|
+| GET    | `/`                               | API info                                       | No   |
+| GET    | `/health`                         | Health check with dependency status            | No   |
+| POST   | `/api/v1/documents/upload`        | Upload a medical bill (PDF/image)              | Yes  |
+| GET    | `/api/v1/documents/{id}`          | Get document + analysis result                 | Yes  |
+| GET    | `/api/v1/documents/{id}/status`   | Get document processing status                 | Yes  |
+| PATCH  | `/api/v1/documents/{id}/letter`   | Update and re-verify a document's appeal letter| Yes  |
+| POST   | `/api/v1/documents/{id}/reprocess`| Recovery: re-process a stuck/errored document  | Yes  |
 
 ### Uploading a document
 
 ```bash
 curl -X POST http://localhost:8000/api/v1/documents/upload \
+  -H "Authorization: Bearer dev-token-change-me" \
   -F "file=@/path/to/bill.pdf"
 ```
 
@@ -186,7 +215,8 @@ Response (201 Created):
 ### Checking status
 
 ```bash
-curl http://localhost:8000/api/v1/documents/{id}/status
+curl -H "Authorization: Bearer dev-token-change-me" \
+  http://localhost:8000/api/v1/documents/{id}/status
 ```
 
 Status flow: `uploaded → processing → analyzed → letter_ready` (or `error`).
@@ -194,17 +224,35 @@ Status flow: `uploaded → processing → analyzed → letter_ready` (or `error`
 ### Getting the full result
 
 ```bash
-curl http://localhost:8000/api/v1/documents/{id}
+curl -H "Authorization: Bearer dev-token-change-me" \
+  http://localhost:8000/api/v1/documents/{id}
 ```
 
-After processing completes (default 3-second mock delay), the response includes the full `result` object with patient, provider, payer, line items, totals, denial codes, appeal prediction, explanation, the generated appeal letter, and the **audit trail**.
+After processing completes, the response includes the full `result` object with patient, provider, payer, line items, totals, denial codes, appeal prediction, explanation, the generated appeal letter, and the **audit trail**.
+
+## Document Text Extraction
+
+When a PDF or image is uploaded, the backend extracts real text before sending it to Member 2:
+
+- **PDFs**: embedded text is extracted via `pypdf` (no external services)
+- **Images**: OCR via `pytesseract` (local, default), AWS Textract, or Google Document AI
+
+Configure via `.env`:
+
+```env
+# "tesseract" (local), "textract" (AWS), or "docai" (Google)
+OCR_PROVIDER=tesseract
+```
+
+If text extraction fails (e.g., scanned PDF with no embedded text and no OCR available), the pipeline gracefully passes a clear placeholder to Member 2 and records the failure in the audit trail.
 
 ## Recovery
 
 If a document is stuck in `processing` or ends in `error`:
 
 ```bash
-curl -X POST http://localhost:8000/api/v1/documents/{id}/reprocess
+curl -X POST -H "Authorization: Bearer dev-token-change-me" \
+  http://localhost:8000/api/v1/documents/{id}/reprocess
 ```
 
 This resets the document to `uploaded` and re-queues the pipeline safely. Only documents in `error` or `processing` can be re-processed — terminal `letter_ready` documents are rejected with a 409.
@@ -215,7 +263,7 @@ This resets the document to `uploaded` and re-queues the pipeline safely. Only d
 python scripts/e2e_smoke_test.py
 ```
 
-This verifies the full journey: health check → upload → processing → letter_ready → audit trail present.
+This verifies the full journey: health check → upload → processing → letter_ready → audit trail present → letter edit → auth enforcement.
 
 ## Health
 
@@ -223,7 +271,7 @@ This verifies the full journey: health check → upload → processing → lette
 curl http://localhost:8000/health
 ```
 
-Returns overall status (`ok` / `degraded`) plus reachability of the rules engine and extraction service, and LLM configuration.
+Returns overall status (`ok` / `degraded`) plus reachability of the rules engine and extraction service, LLM configuration, and auth status.
 
 ## Storage Configuration
 
@@ -261,6 +309,13 @@ MOCK_PIPELINE=true
 RULES_ENGINE_URL=http://localhost:3001
 RULES_ENGINE_TIMEOUT_SECONDS=5.0
 RULES_ENGINE_ENABLED=true
+
+# Member 2 extraction
+EXTRACTION_SERVICE_URL=http://localhost:8001
+EXTRACTION_SERVICE_TIMEOUT_SECONDS=30.0
+EXTRACTION_SERVICE_ENABLED=false
+# Strict mode: raise on extraction failure instead of falling back to mock
+EXTRACTION_STRICT_MODE=false
 ```
 
 ### Rules engine integration
@@ -287,6 +342,11 @@ Every document's journey is recorded in the `audit` object attached to the final
   "pipeline_version": "0.3.0",
   "started_at": "2026-08-13T18:08:03+00:00",
   "extraction_path": "mock",
+  "text_extraction": {
+    "method": "pdf_text",
+    "error": null,
+    "chars": 1240
+  },
   "rules_engine": {
     "enabled": true,
     "flags_added": 2,
@@ -323,7 +383,7 @@ The `ParsedBill` schema is the single shared contract between the backend, front
 - `service_date`
 - `line_items` — CPT/HCPCS codes, ICD-10 diagnoses, units, charge/allowed/paid amounts, modifiers, flags
 - `totals` — billed, allowed, insurance_paid, patient_responsibility, potential_savings
-- `denial_codes`
+- `denial_codes` — supports `code`, `carc`, and `rarc` field shapes
 - `appeal_prediction` — success probability, confidence interval, top factors, model version
 - `explanation` — natural-language analysis
 - `letter` — markdown appeal letter + verification status
@@ -337,6 +397,8 @@ The `ParsedBill` schema is the single shared contract between the backend, front
 - Storage keys are UUID-prefixed to prevent collisions and path traversal.
 - Status transitions are validated against `_ALLOWED_TRANSITIONS` — no hardcoded status strings.
 - The error path always commits a terminal `error` status via a fresh session.
+- Real document text is extracted (PDF/OCR) before being sent to Member 2.
+- All document endpoints require bearer-token auth (configurable via `AUTH_ENABLED`).
 
 ## Troubleshooting
 
@@ -348,7 +410,12 @@ The `ParsedBill` schema is the single shared contract between the backend, front
 
 **Document stuck in `processing`** → Use the recovery endpoint:
 ```bash
-curl -X POST http://localhost:8000/api/v1/documents/{id}/reprocess
+curl -X POST -H "Authorization: Bearer dev-token-change-me" \
+  http://localhost:8000/api/v1/documents/{id}/reprocess
 ```
 
 **Rules engine unreachable** → The backend continues without deterministic flags (graceful degradation). Check `GET /health` for the rules engine status.
+
+**OCR not working** → Install Tesseract OCR binary (https://github.com/UB-Mannheim/tesseract/wiki) and ensure `pytesseract` + `Pillow` are installed. Or switch `OCR_PROVIDER` to `textract`/`docai`.
+
+**401 Unauthorized** → Your bearer token doesn't match `AUTH_TOKEN` in `.env`. Set `AUTH_ENABLED=false` to disable auth in dev.

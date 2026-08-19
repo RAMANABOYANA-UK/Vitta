@@ -96,3 +96,46 @@ def test_no_regression_on_existing_checks():
     assert "amount_1240.0" in verified
     assert "amount_150.0" in verified
     assert "code_99284" in verified
+
+
+def test_denial_code_under_carc_field_verified():
+    """Denial codes may arrive under `carc` (X12/837 format) instead of `code`."""
+    bill = make_bill(denial_codes=[{"carc": "CO-97", "reason": "bundled service"}])
+    ok, verified, problems = verify_letter(
+        bill,
+        "Re: Appeal of Claim GX-2025-883241\n\n"
+        "For services on 07/22/2026, this claim was denied under CO-97, which we contest.",
+    )
+    assert ok and "denial_CO-97" in verified
+
+
+def test_denial_code_under_rarc_field_verified():
+    """Denial codes may arrive under `rarc` (X12/835 remark code) instead of `code`."""
+    bill = make_bill(denial_codes=[{"rarc": "N362", "reason": "remark code"}])
+    ok, verified, problems = verify_letter(
+        bill,
+        "Re: Appeal of Claim GX-2025-883241\n\n"
+        "For services on 07/22/2026, this claim was denied under N362, which we contest.",
+    )
+    assert ok and "denial_N362" in verified
+
+
+def test_denial_code_mixed_fields_all_checked():
+    """Multiple denial codes under different field names are all verified."""
+    bill = make_bill(
+        denial_codes=[
+            {"code": "CO-97", "reason": "bundled"},
+            {"carc": "PR-4", "reason": "modifier"},
+            {"rarc": "N362", "reason": "remark"},
+        ]
+    )
+    ok, verified, problems = verify_letter(
+        bill,
+        "Re: Appeal of Claim GX-2025-883241\n\n"
+        "For services on 07/22/2026, this claim was denied under CO-97, PR-4, and N362.",
+    )
+    assert ok
+    assert "denial_CO-97" in verified
+    assert "denial_PR-4" in verified
+    assert "denial_N362" in verified
+    assert not problems

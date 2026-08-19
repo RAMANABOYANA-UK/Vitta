@@ -93,12 +93,18 @@ async def test_success_persists_result_before_letter_ready():
 
     with patch("app.database.AsyncSessionLocal") as mock_local, \
          patch("app.api.routes.documents.run_pipeline", new=AsyncMock(return_value=result)) as mock_run, \
-         patch("app.api.routes.documents.update_document_status", new=fake_update_status):
+         patch("app.api.routes.documents.update_document_status", new=fake_update_status), \
+         patch("app.api.routes.documents.extract_text_from_bytes", new=AsyncMock(return_value=type("E", (), {"text": None, "method": "none", "error": None})())):
         mock_local.return_value = make_ctx(session)
 
-        await _process_document_background("doc-1", "bill.pdf")
+        await _process_document_background("doc-1", "bill.pdf", b"%PDF-1.4", "application/pdf")
 
-    mock_run.assert_awaited_once_with("doc-1", "bill.pdf")
+    mock_run.assert_awaited_once_with(
+        "doc-1", "bill.pdf",
+        raw_ocr_text=None,
+        text_extraction_method="none",
+        text_extraction_error=None,
+    )
     assert doc.result_json == result.model_dump()
 
     # Status transitions, in order: uploaded → processing → letter_ready
@@ -141,10 +147,11 @@ async def test_exception_always_marks_document_error():
     # Note: update_document_status is NOT patched here — the real function
     # runs against the FakeSession so the test is faithful to production.
     with patch("app.database.AsyncSessionLocal") as mock_local, \
-         patch("app.api.routes.documents.run_pipeline", new=failing_run):
+         patch("app.api.routes.documents.run_pipeline", new=failing_run), \
+         patch("app.api.routes.documents.extract_text_from_bytes", new=AsyncMock(return_value=type("E", (), {"text": None, "method": "none", "error": None})())):
         mock_local.side_effect = [MainCtx(), ErrorCtx()]
 
-        await _process_document_background("doc-1", "bill.pdf")
+        await _process_document_background("doc-1", "bill.pdf", b"%PDF-1.4", "application/pdf")
 
     assert error_doc.status == DocumentStatus.error.value
     assert error_doc.error_message is not None
@@ -184,10 +191,11 @@ async def test_error_path_fresh_session_even_if_commit_fails():
     # update_document_status is NOT patched: the real function commits and
     # triggers the simulated failure; the error path then uses a fresh session.
     with patch("app.database.AsyncSessionLocal") as mock_local, \
-         patch("app.api.routes.documents.run_pipeline", new=never_called_run):
+         patch("app.api.routes.documents.run_pipeline", new=never_called_run), \
+         patch("app.api.routes.documents.extract_text_from_bytes", new=AsyncMock(return_value=type("E", (), {"text": None, "method": "none", "error": None})())):
         mock_local.side_effect = [MainCtx(), ErrorCtx()]
 
-        await _process_document_background("doc-1", "bill.pdf")
+        await _process_document_background("doc-1", "bill.pdf", b"%PDF-1.4", "application/pdf")
 
     assert error_doc.status == DocumentStatus.error.value
     assert "simulated commit failure" in error_doc.error_message

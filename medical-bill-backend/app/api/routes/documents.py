@@ -8,6 +8,8 @@ Guarantees:
 - The error path always commits a terminal `error` status
 - Letter editing uses a proper Pydantic model and re-verifies every edit
 - `DocumentStatus` enum is used strictly for all status values
+- Real document text is extracted (PDF/OCR) and passed to the pipeline
+- All endpoints are protected by bearer-token auth (configurable)
 """
 
 import asyncio
@@ -16,7 +18,7 @@ import logging
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
 from sqlmodel.ext.asyncio.session import AsyncSession
 
-from app.core.security import generate_storage_key
+from app.core.security import generate_storage_key, verify_bearer_token
 from app.database import get_session
 from app.models import Document
 from app.schemas import (
@@ -28,6 +30,7 @@ from app.schemas import (
     LetterUpdateRequest,
     ParsedBill,
 )
+from app.services.document_text import extract_text_from_bytes
 from app.services.letter_verifier import verify_letter
 from app.services.pipeline import run_pipeline, update_document_status
 from app.services.storage import storage_service
@@ -67,6 +70,7 @@ async def _get_document_or_404(
     response_model=DocumentResponse,
     status_code=status.HTTP_201_CREATED,
     summary="Upload a medical bill document",
+    dependencies=[Depends(verify_bearer_token)],
 )
 async def upload_document(
     file: UploadFile = File(...),
@@ -121,7 +125,12 @@ async def upload_document(
 
     # Kick off the analysis pipeline in the background (fire-and-forget)
     asyncio.create_task(
-        _process_document_background(document.id, document.original_filename)
+        _process_document_background(
+            document.id,
+            document.original_filename,
+            contents,
+            document.content_type,
+        )
     )
 
     return document
@@ -131,6 +140,7 @@ async def upload_document(
     "/{document_id}",
     response_model=DocumentDetailResponse,
     summary="Get a document and its analysis result",
+    dependencies=[Depends(verify_bearer_token)],
 )
 async def get_document(
     document_id: str,
@@ -168,6 +178,7 @@ async def get_document(
     "/{document_id}/status",
     response_model=DocumentStatusResponse,
     summary="Get a document's processing status",
+    dependencies=[Depends(verify_bearer_token)],
 )
 async def get_document_status(
     document_id: str,
@@ -186,6 +197,7 @@ async def get_document_status(
 @router.patch(
     "/{document_id}/letter",
     summary="Update and verify a document's appeal letter",
+    dependencies=[Depends(verify_bearer_token)],
 )
 async def update_letter(
     document_id: str,
@@ -227,6 +239,7 @@ async def update_letter(
     "/{document_id}/reprocess",
     summary="Safely re-process a document (recovery)",
     status_code=status.HTTP_202_ACCEPTED,
+    dependencies=[Depends(verify_bearer_token)],
 )
 async def reprocess_document(
     document_id: str,
@@ -263,9 +276,23 @@ async def reprocess_document(
 
     logger.info("Re-process requested for document %s", document_id)
 
-    # Re-queue the background task
+    # Re-queue the background task — re-read the file from storage
+    try:
+        file_bytes = await storage_service.get(document.storage_key)
+    except Exception as e:
+        logger.warning(
+            "Could not re-read file for reprocess %s: %s", document_id, str(e)
+        )
+        file_bytes = b""
+        document.content_type = "application/pdf"
+
     asyncio.create_task(
-        _process_document_background(document.id, document.original_filename)
+        _process_document_background(
+            document.id,
+            document.original_filename,
+            file_bytes,
+            document.content_type,
+        )
     )
 
     return {
@@ -314,7 +341,10 @@ async def _mark_document_error(
 
 
 async def _process_document_background(
-    document_id: str, original_filename: str
+    document_id: str,
+    original_filename: str,
+    file_bytes: bytes,
+    content_type: str,
 ) -> None:
     """
     Reliable, unbreakable background pipeline.
@@ -324,9 +354,10 @@ async def _process_document_background(
 
     Order of operations on success:
       1. uploaded → processing
-      2. Run the full pipeline (extraction → rules → letter generation)
-      3. Persist `result_json` FIRST (separate commit)
-      4. Then move to `letter_ready` (separate commit)
+      2. Extract real text from the document (PDF/OCR)
+      3. Run the full pipeline (extraction → rules → letter generation)
+      4. Persist `result_json` FIRST (separate commit)
+      5. Then move to `letter_ready` (separate commit)
 
     On any exception, the document is forced to `error` via a *fresh*
     database session — because the original session may be unrecoverable
@@ -350,10 +381,37 @@ async def _process_document_background(
                 "Pipeline started: document %s moved to processing", document_id
             )
 
-            # Step 2: Run the full pipeline (extraction → rules → letter)
-            result = await run_pipeline(document_id, original_filename)
+            # Step 2: Extract real text from the document (PDF/OCR)
+            extracted = await extract_text_from_bytes(
+                file_bytes,
+                content_type,
+                original_filename,
+            )
+            if extracted.text:
+                logger.info(
+                    "Document text extracted | document_id=%s | method=%s | chars=%d",
+                    document_id,
+                    extracted.method,
+                    len(extracted.text),
+                )
+            else:
+                logger.warning(
+                    "Document text extraction failed | document_id=%s | method=%s | error=%s",
+                    document_id,
+                    extracted.method,
+                    extracted.error,
+                )
 
-            # Step 3: Persist result FIRST (separate commit).
+            # Step 3: Run the full pipeline (extraction → rules → letter)
+            result = await run_pipeline(
+                document_id,
+                original_filename,
+                raw_ocr_text=extracted.text,
+                text_extraction_method=extracted.method,
+                text_extraction_error=extracted.error,
+            )
+
+            # Step 4: Persist result FIRST (separate commit).
             # The result is durable before we declare the document ready,
             # so a failure in the status transition never loses the result.
             document.result_json = result.model_dump(mode="json")
@@ -361,7 +419,7 @@ async def _process_document_background(
             await session.commit()
             await session.refresh(document)
 
-            # Step 4: Move to the terminal success status
+            # Step 5: Move to the terminal success status
             await update_document_status(
                 session, document, DocumentStatus.letter_ready.value
             )

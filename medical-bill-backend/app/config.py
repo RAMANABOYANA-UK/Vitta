@@ -26,6 +26,16 @@ class Settings(BaseSettings):
     EXTRACTION_SERVICE_URL: str = "http://localhost:8001"
     EXTRACTION_SERVICE_TIMEOUT_SECONDS: float = 30.0
     EXTRACTION_SERVICE_ENABLED: bool = False
+    # When True, extraction failures raise instead of falling back to mock.
+    # Only safe in production when Member 2 is guaranteed available.
+    EXTRACTION_STRICT_MODE: bool = False
+
+    # Document text extraction / OCR
+    OCR_PROVIDER: str = "tesseract"  # "tesseract" | "textract" | "docai"
+    # Google Document AI settings (only used when OCR_PROVIDER=docai)
+    DOCAI_PROJECT_ID: str | None = None
+    DOCAI_LOCATION: str = "us"
+    DOCAI_PROCESSOR_ID: str | None = None
 
     # LLM letter generation settings
     LLM_ENABLED: bool = True
@@ -34,6 +44,16 @@ class Settings(BaseSettings):
     LLM_MODEL: str = "gpt-4o"
     LLM_TIMEOUT_SECONDS: float = 30.0
     LLM_MAX_RETRIES: int = 1
+
+    # Auth settings
+    AUTH_ENABLED: bool = True
+    # Static bearer token for simple API protection (dev-friendly).
+    # In production, set a strong random value or switch to JWT.
+    AUTH_TOKEN: str = "dev-token-change-me"
+    # Optional JWT settings (future-proofing; not used yet)
+    JWT_SECRET: str | None = None
+    JWT_ALGORITHM: str = "HS256"
+    JWT_EXPIRES_MINUTES: int = 60 * 24  # 24 hours
 
 
 settings = Settings()

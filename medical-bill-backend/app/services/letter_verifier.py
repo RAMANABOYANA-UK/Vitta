@@ -39,7 +39,12 @@ _UNLABELED_HCPCS_RE = re.compile(r"\b[A-Z]\d{4}\b", re.IGNORECASE)
 
 _NPI_RE = re.compile(r"\bNPI\s*:?\s*(\d{10})\b", re.IGNORECASE)
 
-_DENIAL_CODE_RE = re.compile(r"\b(CO|PR|OA|CR)-\d{1,3}\b", re.IGNORECASE)
+# CARC (Claim Adjustment Reason Code): CO-97, PR-4, OA-23, CR-1
+# RARC (Remittance Advice Remark Code): N362, M15, MA01 (letter + digits, no hyphen)
+_DENIAL_CODE_RE = re.compile(
+    r"\b(?:CO|PR|OA|CR)-\d{1,3}\b|\bN\d{3}\b",
+    re.IGNORECASE,
+)
 
 _AMOUNT_RE = re.compile(r"\$[\d,]+\.?\d*")
 
@@ -163,9 +168,22 @@ def _check_denial_codes(
     verified: List[str],
     problems: List[str],
 ) -> None:
-    known_denials = {
-        str(d.get("code", "")).upper() for d in (bill.denial_codes or []) if d.get("code")
-    }
+    """Verify denial codes cited in the letter against the bill.
+
+    Denial codes can appear under multiple field names in the source data:
+    - `code` (Vitta contract)
+    - `carc` (Claim Adjustment Reason Code — standard X12/837 format)
+    - `rarc` (Remittance Advice Remark Code — standard X12/835 format)
+
+    We collect all of them so the verifier is robust to whichever shape
+    Member 2 (or a future EOB parser) returns.
+    """
+    known_denials: set[str] = set()
+    for d in (bill.denial_codes or []):
+        for field in ("code", "carc", "rarc"):
+            val = d.get(field)
+            if val:
+                known_denials.add(str(val).upper())
 
     for match in _DENIAL_CODE_RE.finditer(content):
         code = match.group(0).upper()

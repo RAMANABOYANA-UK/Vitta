@@ -1,4 +1,84 @@
-use crate::types::{Flag, LineItem};
+You are a senior backend + systems engineer working on the Vitta medical bill intelligence platform (Member 3 role).
+
+I own:
+- `medical-bill-backend` (FastAPI)
+- `bill_rules` (Rust deterministic rules engine)
+
+A code review found several real issues. Fix all of them cleanly and production-oriented.
+
+### Issues to Fix
+
+**Rust Rules Engine (`bill_rules`)**
+1. Uses opaque `serde_json::Value` in a fragile way.
+2. Only updates `line_items` and does not handle the document robustly.
+3. Must preserve all unknown fields so Member 2’s extra fields survive the round-trip.
+4. NCCI unbundling pairs are too few / some are weak.
+5. Error handling and logging need to be clearer.
+6. Health endpoint and service robustness should be improved.
+
+**Python Backend (`medical-bill-backend`)**
+1. Background task (`_process_document_background`) is fragile — status can get stuck in `processing` even when the pipeline succeeded.
+2. Status transitions and error handling in the background task are incomplete.
+3. `PATCH /documents/{id}/letter` accepts a raw `dict` instead of a proper Pydantic model.
+4. Health endpoint does not check whether the Rust rules service is reachable.
+5. Status strings are sometimes hardcoded instead of using the `DocumentStatus` enum consistently.
+6. Letter verifier only checks 5-digit CPT codes (misses HCPCS) and can be strengthened.
+7. Overall: make the pipeline more reliable with graceful degradation.
+
+### Required Outcomes
+
+**Rust side**
+- Harden `apply_rules_to_document` so it:
+  - Safely extracts only what it needs (`line_items` + `totals`)
+  - Runs duplicates, reconciliation, and unbundling rules
+  - Writes enriched `line_items` back
+  - Preserves every other field in the JSON exactly
+- Improve rule quality and messages
+- Expand NCCI starter pairs with more realistic common pairs
+- Keep the HTTP API stable: `GET /health` and `POST /apply-rules` on port 3001
+- Better structured logging (document_id, flags added, errors)
+
+**Python side**
+- Make the background pipeline task reliable:
+  - Always persist `result_json` when the pipeline succeeds
+  - Always move to a terminal status (`letter_ready` or `error`)
+  - Never leave a document stuck in `processing`
+- Add a proper Pydantic request model for letter editing
+- Improve `GET /health` so it reports rules-engine reachability
+- Strengthen `letter_verifier.py` (support HCPCS-style codes, cleaner checks)
+- Use `DocumentStatus` enum consistently
+- Keep graceful fallback when Rust service or LLM is unavailable
+
+### Deliverables
+Provide complete, ready-to-paste updated code for:
+
+**Rust**
+- `bill_rules/src/lib.rs`
+- `bill_rules/src/main.rs`
+- `bill_rules/src/types.rs` (if changed)
+- `bill_rules/src/engine.rs`
+- `bill_rules/src/rules/*.rs`
+- Any needed `Cargo.toml` changes
+
+**Python**
+- `app/api/routes/documents.py` (background task + letter endpoint)
+- `app/api/routes/health.py`
+- `app/services/letter_verifier.py`
+- `app/services/pipeline.py` (if needed)
+- `app/schemas.py` (add letter update model if needed)
+- Any small config improvements
+
+Also give a short summary of every fix you made and how to verify them.
+
+### Principles
+- Deterministic rules stay in Rust
+- Never let hallucinated data reach the user
+- Preserve unknown fields across the Rust boundary
+- Graceful degradation everywhere
+- Clean, typed, production-quality code
+- Do not break the existing Python ↔ Rust contract
+
+Start implementing all fixes now.use crate::types::{Flag, LineItem};
 
 /// Rule ID for same-CPT + same-date duplicate detection.
 const RULE_DUP_CPT_SAME_DATE: &str = "DUP-CPT-001";
