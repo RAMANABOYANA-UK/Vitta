@@ -1,0 +1,90 @@
+# Vitta — production-ish local stack: Postgres + all services.
+# Usage:  docker compose up --build
+#
+# NOTE on PHI readiness: this wires the pieces together for local/staging runs.
+# Before touching real patient data you must also set strong secrets (Postgres
+# password), enable email verification (EMAIL_VERIFICATION_REQUIRED=true) with a
+# real sender, and put real TLS in front (e.g. a reverse proxy) — see ROADMAP.
+
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      # Override in production (never commit a real secret here).
+      POSTGRES_USER: ${POSTGRES_USER:-vitta}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-change-me}
+      POSTGRES_DB: vitta
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-vitta}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  bill_rules:
+    build: ./bill_rules
+    restart: unless-stopped
+    environment:
+      BILL_RULES_PORT: "3001"
+    expose:
+      - "3001"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:3001/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  extraction:
+    build: ./data-extraction-service
+    restart: unless-stopped
+    environment:
+      MODELS_DIR: /app/models
+      REFERENCE_DATA_DIR: /app/data/reference
+    expose:
+      - "8001"
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://localhost:8001/health').status==200 else 1)\""]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    build: ./medical-bill-backend
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-vitta}:${POSTGRES_PASSWORD:-change-me}@db:5432/vitta
+      ENVIRONMENT: development
+      # Full production wiring: point at these containers and enable real auth.
+      EXTRACTION_SERVICE_URL: http://extraction:8001
+      EXTRACTION_SERVICE_ENABLED: ${EXTRACTION_SERVICE_ENABLED:-true}
+      RULES_ENGINE_URL: http://bill_rules:3001
+      RULES_ENGINE_ENABLED: ${RULES_ENGINE_ENABLED:-true}
+      # OCR for images/scanned PDFs is off unless you add a configured provider.
+      OCR_ENABLED: ${OCR_ENABLED:-false}
+      AUTH_TOKEN_TTL_HOURS: 24
+      EMAIL_VERIFICATION_REQUIRED: ${EMAIL_VERIFICATION_REQUIRED:-false}
+      # CORS: the frontend is served on the same origin via nginx, so the list
+      # only needs to include other browser origins you actually use.
+      CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-http://localhost:8080,http://localhost}
+    depends_on:
+      db:
+        condition: service_healthy
+      extraction:
+        condition: service_started
+      bill_rules:
+        condition: service_started
+    expose:
+      - "8000"
+
+  frontend:
+    build: ./frontend
+    restart: unless-stopped
+    depends_on:
+      - backend
+    ports:
+      - "${FRONTEND_PORT:-8080}:80"
+
+volumes:
+  postgres_data:
