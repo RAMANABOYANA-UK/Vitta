@@ -212,6 +212,27 @@ class TestTotalsReconciliation:
 
         assert any(w.code == "TOTALS_VS_LINES_MISMATCH" for w in result.warnings)
 
+    def test_totals_honor_extracted_adjustments_total(self):
+        """An extracted adjustments_total is recorded (previously dead), and the
+        two-way invariant allowed == paid + patient_responsibility drives pass/fail."""
+        totals = Totals(
+            billed=500.0,
+            allowed=340.0,
+            insurance_paid=272.0,
+            patient_responsibility=68.0,
+            adjustments_total=160.0,  # stated on the bill, but unused before
+        )
+        bill = _make_bill([], totals=totals)
+        svc = ValidationService()
+        result = svc.validate(bill)
+
+        rec = result.totals.reconciliation
+        # The check uses the reduced two-way invariant, so it still passes...
+        assert rec["matches_patient_responsibility"] is True
+        # ...and the extracted value is now surfaced instead of being dropped.
+        assert rec["adjustments_total"] == 160.0
+        assert not any(w.code == "TOTALS_MISMATCH" for w in result.warnings)
+
 
 class TestReconcileAmountsHelper:
     def test_reconcile_amounts_matching(self):

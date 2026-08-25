@@ -434,25 +434,34 @@ class ValidationService:
         and that line-item sums match stated totals."""
         issues = []
 
-        # Check totals internal consistency
+        # Check totals internal consistency.
+        # The three-way form `billed - adjustments - paid == patient_responsibility`
+        # is algebraically identical to the two-way invariant `allowed - paid ==
+        # patient_responsibility` (because adjustments = billed - allowed), so we
+        # check the simpler, more direct form here. An extracted ``adjustments_total``
+        # (previously dead) is recorded when present, else derived from the bill.
         if (
             totals.billed is not None
             and totals.allowed is not None
             and totals.insurance_paid is not None
             and totals.patient_responsibility is not None
         ):
-            adjustments = totals.billed - totals.allowed
-            expected = round(totals.billed - adjustments - totals.insurance_paid, 2)
+            adjustments = totals.adjustments_total
+            if adjustments is None:
+                adjustments = round(totals.billed - totals.allowed, 2)
+            # allowed == paid + patient_responsibility
+            expected = round(totals.allowed - totals.insurance_paid, 2)
             ok = abs(expected - totals.patient_responsibility) <= self.amount_tolerance
             totals.reconciliation = {
                 "billed_minus_adjustments_minus_paid": expected,
                 "matches_patient_responsibility": ok,
+                "adjustments_total": adjustments,
             }
             if not ok:
                 issues.append(
-                    f"billed ({totals.billed}) - adjustments ({adjustments}) "
-                    f"- paid ({totals.insurance_paid}) = {expected}, but stated patient "
-                    f"responsibility is {totals.patient_responsibility}"
+                    f"allowed ({totals.allowed}) - paid ({totals.insurance_paid}) "
+                    f"= {expected}, but stated patient responsibility is "
+                    f"{totals.patient_responsibility}"
                 )
                 self._add_warning(
                     warnings,
