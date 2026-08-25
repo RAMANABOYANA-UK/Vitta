@@ -25,6 +25,7 @@ accepted risk, not an oversight (see the docstring on
 import re
 from typing import List, Tuple
 
+from app.config import settings
 from app.schemas import ParsedBill
 
 
@@ -48,6 +49,21 @@ _DENIAL_CODE_RE = re.compile(
 
 _AMOUNT_RE = re.compile(r"\$[\d,]+\.?\d*")
 
+# Legal/regulatory citation patterns (U.S.C., C.F.R., U.S. Stat.). Fabricated
+# references here are the highest-liability failure mode in the system, so when
+# CITATION_FABRICATION_POLICY != "off" they are checked against an allow-list
+# and fail verification if not approved.
+_CITATION_RE = re.compile(
+    r"\b\d{1,3}\s*(?:U\.?\s?S\.?\s?C\.?\s*§?\s*\.?\d+|C\.?\s?F\.?\s?R\.?\s*§?\s*\.?\d+|U\.?\s?S\.?\s?Stat\.?\s*\.?\d+)",
+    re.IGNORECASE,
+)
+
+
+def _allowed_citations() -> set[str]:
+    """Parse the configured comma-separated allow-list into lowercased strings."""
+    raw = getattr(settings, "ALLOWED_CITATIONS", "") or ""
+    return {part.strip().lower() for part in raw.split(",") if part.strip()}
+
 
 def verify_letter(bill: ParsedBill, letter_content: str) -> Tuple[bool, List[str], List[str]]:
     problems: List[str] = []
@@ -62,6 +78,7 @@ def verify_letter(bill: ParsedBill, letter_content: str) -> Tuple[bool, List[str
     _check_npi(bill, content, verified, problems)
     _check_denial_codes(bill, content, verified, problems)
     _check_dollar_amounts(bill, content, verified, problems)
+    _check_citations(bill, content, problems)
 
     return len(problems) == 0, sorted(set(verified)), problems
 
@@ -233,3 +250,41 @@ def _check_dollar_amounts(
             verified.append(f"amount_{value}")
         else:
             problems.append(f"Amount {raw} doesn't match any known figure on the bill")
+def _check_citations(
+    bill: ParsedBill,
+    content: str,
+    problems: List[str],
+) -> None:
+    """Fail-closed citation guard (see CITATION_FABRICATION_POLICY).
+
+    The letter verifier historically checked codes, dates, NPIs and amounts but
+    NEVER statutory/regulatory citations — so a fabricated "42 U.S.C. 1395" or a
+    hallucinated appeal-deadline statute went out unchallenged. When the policy is
+    "warn", any citation that is NOT in the approved allow-list fails verification,
+    so the letter is marked unverified until the text is corrected (or the citation
+    is added to the approved library after genuine review).
+
+    Resolution of the roadmap's "unresolved question": we choose the allow-list
+    constraint (option: constrain letters to pre-approved citation strings), with
+    the ability to omit citations simply by leaving ALLOWED_CITATIONS empty while
+    policy is "warn" — in which case any citation is rejected (de-facto "no
+    citations in generated text", the safest option).
+    """
+    policy = (getattr(settings, "CITATION_FABRICATION_POLICY", "off") or "off").lower()
+    if policy == "off":
+        return
+
+    allowed = _allowed_citations()
+    seen: set[str] = set()
+    for match in _CITATION_RE.finditer(content):
+        citation = " ".join(match.group(0).split()).strip()
+        key = citation.lower()
+        if key in seen:
+            continue
+        seen.add(key)
+        if not any(key in a or a in key for a in allowed):
+            problems.append(
+                f"Citation '{citation}' could not be verified against the approved "
+                f"reference library. Legal/regulatory citations must come from the "
+                f"approved list or be removed from the letter."
+            )

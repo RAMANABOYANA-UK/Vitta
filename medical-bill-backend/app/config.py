@@ -59,6 +59,17 @@ class Settings(BaseSettings):
     # scanned-PDF bills require OCR, which needs pytesseract + a tesseract binary.
     OCR_ENABLED: bool = False
 
+    # Letter citation policy — closes the "fabricated legal citation" gap that was
+    # previously unguarded (the verifier checked codes/dates/NPIs/amounts but never
+    # statutory/regulatory references). Options:
+    #   "off"   -> do not inspect citations (current behavior preserved).
+    #   "warn"  -> any legal/regulatory citation NOT in ALLOWED_CITATIONS fails
+    #              verification (the letter is marked unverified until fixed).
+    # A statute quoted from the approved library must be listed comma-separated
+    # (case-insensitive substring match) in ALLOWED_CITATIONS.
+    CITATION_FABRICATION_POLICY: str = "off"
+    ALLOWED_CITATIONS: str = ""
+
     # CORS: an explicit allowlist of browser origins. A wildcard ("*") is invalid
     # together with allow_credentials=True, so we never use one. Comma-separated.
     CORS_ALLOWED_ORIGINS: str = (
