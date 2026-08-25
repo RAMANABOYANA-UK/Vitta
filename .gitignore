@@ -56,3 +56,6 @@ Thumbs.db
 # Logs
 *.log
 logs/
+
+# Salesforce metadata accidentally committed (.sf/)
+.sf/
