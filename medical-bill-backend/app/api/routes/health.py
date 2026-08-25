@@ -73,5 +73,9 @@ async def health_check() -> dict:
             "url": settings.EXTRACTION_SERVICE_URL,
         },
         "llm_enabled": settings.LLM_ENABLED,
-        "auth_enabled": settings.AUTH_ENABLED,
+        # Auth is always enforced on protected routes via opaque bearer-token
+        # sessions (see app.core.auth). There is no runtime toggle to disable
+        # it — reporting phantom config here previously referenced a setting
+        # that does not exist (crashed /health). Kept truthful instead.
+        "auth": "enforced",
     }

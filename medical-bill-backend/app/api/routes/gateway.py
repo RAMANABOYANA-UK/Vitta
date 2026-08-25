@@ -256,88 +256,6 @@ async def gateway_recompute_appeal_score(
 @router.patch("/bills/{document_id}/letter", summary="Update and re-verify the appeal letter")
 async def gateway_update_letter(
     document_id: str,
-@router.get(
-    "/bills/{document_id}/letter/export",
-    summary="Download the verified appeal letter as text (markdown)",
-)
-async def gateway_export_letter(
-    document_id: str,
-    current_user: User = Depends(get_current_user),
-    session: AsyncSession = Depends(get_session),
-) -> PlainTextResponse:
-    """Return the stored appeal letter as a downloadable markdown/text file.
-
-    Owner-scoped, audited, and safe: returns whatever letter content is on the
-    bill (never re-generates), so the export always matches what the user sees.
-    """
-    document = await _get_document_or_404(document_id, session, current_user)
-    if not document.result_json:
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail="Document has not finished processing yet",
-        )
-    bill = ParsedBill.model_validate(document.result_json)
-    letter = bill.letter
-    if letter is None or not letter.content_markdown.strip():
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="No appeal letter is available for this document yet",
-        )
-    await _record_access(
-        session,
-        user_id=current_user.id,
-        document_id=document.id,
-        action="export_letter",
-    )
-    filename = f"appeal-letter-{document.id[:8]}.md"
-    return PlainTextResponse(
-        content=letter.content_markdown,
-        media_type="text/markdown; charset=utf-8",
-        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
-    )
-
-
-@router.post(
-    "/bills/{document_id}/letter/email",
-    summary="Email the verified appeal letter",
-)
-async def gateway_email_letter(
-    document_id: str,
-    body: LetterEmailRequest = Body(default=LetterEmailRequest()),
-    current_user: User = Depends(get_current_user),
-    session: AsyncSession = Depends(get_session),
-) -> dict:
-    """Email the stored appeal letter to the given address.
-
-    The letter body (PHI) is handed to the mailer boundary and is never logged.
-    Only the recipient + subject are recorded. Requires a verified letter to
-    exist on the document.
-    """
-    document = await _get_document_or_404(document_id, session, current_user)
-    if not document.result_json:
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail="Document has not finished processing yet",
-        )
-    bill = ParsedBill.model_validate(document.result_json)
-    letter = bill.letter
-    if letter is None or not letter.content_markdown.strip():
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="No appeal letter is available for this document yet",
-        )
-    send_appeal_letter_email(
-        email=body.email,
-        subject=body.subject or "Your Vitta appeal letter",
-        letter_markdown=letter.content_markdown,
-    )
-    await _record_access(
-        session,
-        user_id=current_user.id,
-        document_id=document.id,
-        action="email_letter",
-    )
-    return {"documentId": document_id, "email": body.email, "sent": True}
     body: LetterUpdateRequest,
     current_user: User = Depends(get_current_user),
     session: AsyncSession = Depends(get_session),
@@ -388,3 +306,87 @@ async def gateway_email_letter(
         "isFullyVerified": is_valid,
         "problems": problems,
     }
+
+
+@router.get(
+    "/bills/{document_id}/letter/export",
+    summary="Download the verified appeal letter as text (markdown)",
+)
+async def gateway_export_letter(
+    document_id: str,
+    current_user: User = Depends(get_current_user),
+    session: AsyncSession = Depends(get_session),
+) -> PlainTextResponse:
+    """Return the stored appeal letter as a downloadable markdown/text file.
+
+    Owner-scoped, audited, and safe: returns whatever letter content is on the
+    bill (never re-generates), so the export always matches what the user sees.
+    """
+    document = await _get_document_or_404(document_id, session, current_user)
+    if not document.result_json:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Document has not finished processing yet",
+        )
+    bill = ParsedBill.model_validate(document.result_json)
+    letter = bill.letter
+    if letter is None or not letter.content_markdown.strip():
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="No appeal letter is available for this document yet",
+        )
+    await _record_access(
+        session,
+        user_id=current_user.id,
+        document_id=document.id,
+        action="export_letter",
+    )
+    filename = f"appeal-letter-{document.id[:8]}.md"
+    return PlainTextResponse(
+        content=letter.content_markdown,
+        media_type="text/markdown; charset=utf-8",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+@router.post(
+    "/bills/{document_id}/letter/email",
+    summary="Email the verified appeal letter",
+)
+async def gateway_email_letter(
+    document_id: str,
+    body: LetterEmailRequest,
+    current_user: User = Depends(get_current_user),
+    session: AsyncSession = Depends(get_session),
+) -> dict:
+    """Email the stored appeal letter to the given address.
+
+    The letter body (PHI) is handed to the mailer boundary and is never logged.
+    Only the recipient + subject are recorded. Requires a verified letter to
+    exist on the document.
+    """
+    document = await _get_document_or_404(document_id, session, current_user)
+    if not document.result_json:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Document has not finished processing yet",
+        )
+    bill = ParsedBill.model_validate(document.result_json)
+    letter = bill.letter
+    if letter is None or not letter.content_markdown.strip():
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="No appeal letter is available for this document yet",
+        )
+    send_appeal_letter_email(
+        email=body.email,
+        subject=body.subject or "Your Vitta appeal letter",
+        letter_markdown=letter.content_markdown,
+    )
+    await _record_access(
+        session,
+        user_id=current_user.id,
+        document_id=document.id,
+        action="email_letter",
+    )
+    return {"documentId": document_id, "email": body.email, "sent": True}
