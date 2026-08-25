@@ -15,11 +15,28 @@ meaningful patterns and the SHAP explanations make sense.
 
 from __future__ import annotations
 
+import hashlib
+
 import numpy as np
 import pandas as pd
 from typing import Dict, List, Optional, Tuple
 
 from app.config import settings
+
+
+def _stable_hash(text: str) -> int:
+    """Deterministic, process-independent hash of a string.
+
+    Python's built-in ``hash()`` is salted per process (PYTHONHASHSEED), so it
+    returns different values on every run. That caused train/serve skew: the
+    ``fair_price`` feature (via ``_geo_factor``) was computed with one geo factor
+    at training time and a *different* one in a fresh serving process, so a
+    persisted model scored features drawn from a distribution it never saw. Using
+    a fixed digest makes the synthetic features fully reproducible across
+    processes while preserving the original "spread" semantics of ``% N``.
+    """
+    digest = hashlib.blake2b(text.encode("utf-8"), digest_size=8).digest()
+    return int.from_bytes(digest, "big")
 
 
 # Reference CPT codes with approximate fair-price benchmarks (per unit, median)
@@ -83,7 +100,7 @@ ERROR_TYPES: List[str] = [
 
 def _geo_factor(rng: np.random.Generator, geo: str) -> float:
     """Geography cost factor (deterministic-ish noise per geography)."""
-    return 0.85 + 0.5 * (hash(geo) % 100) / 100.0
+    return 0.85 + 0.5 * (_stable_hash(geo) % 100) / 100.0
 
 
 def _provider_factor(rng: np.random.Generator, prov: str) -> float:
@@ -200,8 +217,8 @@ class SyntheticDataGenerator:
         success_prob = success_prob + 0.15 * ratio_norm
 
         # Modulate by geo/payer 'friendliness' noise
-        geo_noise = np.array([(hash(g) % 20) / 100.0 for g in geos])
-        payer_noise = np.array([(hash(p) % 15) / 100.0 for p in payers])
+        geo_noise = np.array([(_stable_hash(g) % 20) / 100.0 for g in geos])
+        payer_noise = np.array([(_stable_hash(p) % 15) / 100.0 for p in payers])
         success_prob = np.clip(success_prob + geo_noise - payer_noise, 0.02, 0.98)
 
         appeal_success = (rng.random(n) < success_prob).astype(int)

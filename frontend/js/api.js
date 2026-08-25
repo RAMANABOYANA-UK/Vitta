@@ -1083,6 +1083,34 @@
       );
       return new Promise((resolve) => setTimeout(() => resolve(items.map((c) => ({ ...c }))), 60));
     }
+
+    /* ---------------- Letter editing ---------------- */
+
+    /**
+     * PATCH /bills/{id}/letter (mock) — accept an edited letter and return a
+     * re-verified letter shape mirroring the real gateway response.
+     * @param {string} documentId
+     * @param {string} contentMarkdown
+     * @returns {Promise<{documentId:string, letter:Object, isFullyVerified:boolean, problems:string[]}>}
+     */
+    updateLetter(documentId, contentMarkdown) {
+      const content = String(contentMarkdown || "");
+      const problems = content.trim().length === 0 ? ["Letter body is empty."] : [];
+      const passed = problems.length === 0;
+      const result = {
+        documentId: documentId,
+        letter: {
+          status: "edited",
+          contentMarkdown: content,
+          verifiedFields: passed ? ["content_markdown"] : [],
+          verificationPassed: passed,
+          problems: problems
+        },
+        isFullyVerified: passed,
+        problems: problems
+      };
+      return new Promise((resolve) => setTimeout(() => resolve(result), 200));
+    }
   }
 
   /* ==========================================================
@@ -1094,18 +1122,28 @@
       this.options = options || {};
       this.baseUrl = (this.options.baseUrl || "/api/v1").replace(/\/+$/, "");
       this.authToken = this.options.authToken || null;
-      this.wsBaseUrl = this.options.wsBaseUrl || this._deriveWsUrl(this.baseUrl);
       this._pollers = new Map();
-    }
-
-    _deriveWsUrl(baseUrl) {
-      return baseUrl.replace(/^http/, "ws") + "/ws";
     }
 
     _headers(extra) {
       const h = Object.assign({ "Content-Type": "application/json" }, extra || {});
       if (this.authToken) h["Authorization"] = "Bearer " + this.authToken;
       return h;
+    }
+
+    // On an expired/invalid session the server returns 401. Clear the stored
+    // session and bounce to the login page (unless we're already there) so the
+    // user re-authenticates instead of hitting silent, repeated failures.
+    _handleUnauthorized() {
+      try {
+        localStorage.removeItem("vitta_token");
+        localStorage.removeItem("vitta_token_expires");
+        localStorage.removeItem("vitta_user");
+      } catch (e) { /* localStorage unavailable */ }
+      if (typeof window !== "undefined" && window.location &&
+          !/login\.html$/.test(window.location.pathname || "")) {
+        window.location.href = "login.html";
+      }
     }
 
     async _request(path, options) {
@@ -1117,11 +1155,13 @@
         throw { code: "NETWORK", message: "Could not reach the pipeline service. Please check your connection and try again." };
       }
       if (!resp.ok) {
+        if (resp.status === 401) this._handleUnauthorized();
         let err;
         try { err = await resp.json(); } catch (e) { err = {}; }
+        const detail = err.detail && typeof err.detail === "object" ? err.detail : err;
         throw {
-          code: err.code || "HTTP_" + resp.status,
-          message: err.message || "Request failed with status " + resp.status,
+          code: detail.code || err.code || "HTTP_" + resp.status,
+          message: detail.message || err.message || "Request failed with status " + resp.status,
           status: resp.status
         };
       }
@@ -1145,9 +1185,11 @@
         throw { code: "NETWORK", message: "Could not reach the pipeline service. Please check your connection and try again." };
       }
       if (!resp.ok) {
+        if (resp.status === 401) this._handleUnauthorized();
         let err;
         try { err = await resp.json(); } catch (e) { err = {}; }
-        throw { code: err.code || "UPLOAD_FAILED", message: err.message || "Upload failed with status " + resp.status };
+        const detail = err.detail && typeof err.detail === "object" ? err.detail : err;
+        throw { code: detail.code || err.code || "UPLOAD_FAILED", message: detail.message || err.message || "Upload failed with status " + resp.status };
       }
       return resp.json();
     }
@@ -1162,31 +1204,17 @@
     }
 
     /**
-     * Subscribe to job updates — real backend uses WS /ws/jobs/{id}.
-     * Falls back to polling if WebSocket is unavailable or errors.
+     * Subscribe to job updates by polling GET /jobs/{id}/status.
+     *
+     * The backend exposes no WebSocket endpoint, so we poll directly rather
+     * than attempting a WS connection that would fail and log a console error
+     * on every upload. If a streaming endpoint is added later, reintroduce a
+     * WebSocket attempt here with this poll as the fallback.
      * @param {string} jobId
      * @param {(update: PipelineStatus) => void} cb
      * @returns {() => void} unsubscribe
      */
     onJobUpdate(jobId, cb) {
-      if (typeof WebSocket !== "undefined") {
-        try {
-          const ws = new WebSocket(this.wsBaseUrl + "/jobs/" + encodeURIComponent(jobId));
-          let closed = false;
-          ws.onmessage = (e) => {
-            try { cb(JSON.parse(e.data)); } catch (err) { /* ignore malformed frames */ }
-          };
-          ws.onerror = () => {
-            if (!closed) { closed = true; try { ws.close(); } catch (e) {} this._pollJob(jobId, cb); }
-          };
-          ws.onclose = () => {
-            if (!closed) { closed = true; this._pollJob(jobId, cb); }
-          };
-          return () => { closed = true; try { ws.close(); } catch (e) {} };
-        } catch (err) {
-          // WebSocket constructor threw — fall back to polling
-        }
-      }
       return this._pollJob(jobId, cb);
     }
 
@@ -1203,6 +1231,18 @@
             timer = setTimeout(poll, 1000);
           }
         } catch (err) {
+          cb({
+            jobId: jobId,
+            status: "polling_error",
+            progress: 0,
+            stages: [],
+            failure: { code: err && err.code || "NETWORK", message: "Connection lost. Retrying status check…" },
+            partial: false,
+            partialBill: null,
+            partialFlags: null,
+            partialScore: null,
+            extractionWarnings: []
+          });
           timer = setTimeout(poll, 2000);
         }
       };
@@ -1254,21 +1294,64 @@
     }
 
     /**
-     * GET /codes/{code}
+     * Resolve a billing code from the bundled CODE_REFERENCE.
+     *
+     * The backend has no code-glossary endpoint, so — like MockVittaAPI — the
+     * client resolves codes locally from the reference data shipped with the
+     * app. This keeps glossary tooltips working in real mode with no round-trip.
      * @param {string} code
      * @returns {Promise<CodeDefinition>}
      */
     async getCode(code) {
-      return this._request("/codes/" + encodeURIComponent(code));
+      const key = String(code || "").trim().toUpperCase();
+      const found = CODE_REFERENCE.find((c) => c.code.toUpperCase() === key);
+      if (!found) {
+        return Promise.reject({ code: "NOT_FOUND", message: "Code " + code + " not found in reference data." });
+      }
+      return { ...found };
     }
 
     /**
-     * GET /codes?q=...
+     * Search the bundled CODE_REFERENCE. Resolved locally (see getCode).
      * @param {string} q
      * @returns {Promise<CodeDefinition[]>}
      */
     async searchCodes(q) {
-      return this._request("/codes?q=" + encodeURIComponent(q || ""));
+      const query = String(q || "").toLowerCase();
+      return CODE_REFERENCE.filter(
+        (c) => !query || c.code.toLowerCase().includes(query) || c.description.toLowerCase().includes(query) || c.plainLanguage.toLowerCase().includes(query) || c.type.toLowerCase().includes(query)
+      ).map((c) => ({ ...c }));
+    }
+
+    /**
+     * PATCH /bills/{id}/letter — save an edited appeal letter and re-verify it
+     * against the parsed bill on the server. Returns the re-verified letter.
+     * @param {string} documentId
+     * @param {string} contentMarkdown
+     * @returns {Promise<{documentId:string, letter:Object, isFullyVerified:boolean, problems:string[]}>}
+     */
+    async updateLetter(documentId, contentMarkdown) {
+      return this._request("/bills/" + encodeURIComponent(documentId) + "/letter", {
+        method: "PATCH",
+        headers: this._headers(),
+        body: JSON.stringify({ content_markdown: contentMarkdown })
+      });
+    }
+
+    /**
+     * POST /auth/logout — best-effort server-side session revocation.
+     * Swallows errors (including 401 for an already-invalid token); the caller
+     * clears local state and redirects regardless.
+     * @returns {Promise<void>}
+     */
+    async logout() {
+      const headers = {};
+      if (this.authToken) headers["Authorization"] = "Bearer " + this.authToken;
+      try {
+        await fetch(this.baseUrl + "/auth/logout", { method: "POST", headers });
+      } catch (e) {
+        /* best-effort: network failure shouldn't block local logout */
+      }
     }
   }
 

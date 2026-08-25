@@ -348,6 +348,8 @@
           <a href="#" class="forgot-link" onclick="alert('Password reset link sent to your email!')">Forgot password?</a>
         </div>
 
+        <div id="authError" role="alert" style="display:none; margin-bottom:16px; padding:10px 12px; background:rgba(239,68,68,0.12); border:1px solid rgba(239,68,68,0.4); border-radius:8px; color:#fca5a5; font-size:0.85rem;"></div>
+
         <button type="submit" class="btn-submit" id="btnSubmit">Sign In to Dashboard</button>
       </form>
 
@@ -367,6 +369,15 @@
   </div>
 
   <script>
+    // ---- Auth wiring: talks to the real backend auth endpoints. ----
+    // Base URL resolution mirrors js/api.js (default same-origin "/api/v1").
+    // Override with ?api_base=... or window.VITTA_API_BASE when the backend is
+    // served from a different origin during development.
+    const API_BASE = (function () {
+      const qs = new URLSearchParams(window.location.search).get("api_base");
+      return (qs || window.VITTA_API_BASE || "/api/v1").replace(/\/+$/, "");
+    })();
+
     let mode = 'signin';
 
     function switchTab(tab) {
@@ -377,41 +388,140 @@
       document.getElementById('authTitle').textContent = tab === 'signin' ? 'Welcome back' : 'Create your account';
       document.getElementById('authSub').textContent = tab === 'signin' ? 'Sign in to manage your bills and appeal claims' : 'Start deciphering bills and saving money today';
       document.getElementById('btnSubmit').textContent = tab === 'signin' ? 'Sign In to Dashboard' : 'Create Free Account';
+      hideError();
     }
 
-    function handleSocial(provider) {
-      saveUserSession('Alex Sharma', 'alex.sharma@vitta.ai');
-      window.location.href = 'app.html';
+    function showError(msg) {
+      const el = document.getElementById('authError');
+      el.textContent = msg;
+      el.style.display = 'block';
+    }
+    function hideError() {
+      document.getElementById('authError').style.display = 'none';
     }
 
-    function handleSubmit(e) {
-      e.preventDefault();
-      const email = document.getElementById('inputEmail').value || 'alex.sharma@vitta.ai';
-      const name = mode === 'signup' 
-        ? (document.getElementById('inputName').value || 'Alex Sharma')
-        : (email.split('@')[0].replace('.', ' ').replace(/(^\w|\s\w)/g, m => m.toUpperCase()) || 'Alex Sharma');
-      
-      saveUserSession(name, email);
-      window.location.href = 'app.html';
+    function setBusy(busy, idleLabel) {
+      const btn = document.getElementById('btnSubmit');
+      btn.disabled = busy;
+      btn.style.opacity = busy ? '0.7' : '1';
+      btn.style.cursor = busy ? 'not-allowed' : 'pointer';
+      btn.textContent = busy ? 'Please wait…' : (idleLabel || 'Sign In to Dashboard');
     }
 
-    function fillDemoAndSubmit() {
-      saveUserSession('Alex Sharma', 'alex.sharma@vitta.ai');
-      window.location.href = 'app.html';
+    // POST JSON to an auth endpoint. Resolves to the parsed body on 2xx; throws
+    // an Error carrying a friendly message and .status otherwise.
+    async function authFetch(path, body) {
+      let resp;
+      try {
+        resp = await fetch(API_BASE + path, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body)
+        });
+      } catch (e) {
+        const err = new Error("Couldn't reach the server. Is the backend running?");
+        err.status = 0;
+        throw err;
+      }
+      let data = {};
+      try { data = await resp.json(); } catch (e) { /* empty/no body */ }
+      if (!resp.ok) {
+        const err = new Error(extractDetail(data) || ("Request failed (" + resp.status + ")"));
+        err.status = resp.status;
+        throw err;
+      }
+      return data;
     }
 
-    function saveUserSession(name, email) {
+    // FastAPI errors live in `detail`: a string, or a list of validation objects.
+    function extractDetail(data) {
+      if (!data) return null;
+      if (typeof data.detail === 'string') return data.detail;
+      if (Array.isArray(data.detail) && data.detail.length) {
+        const first = data.detail[0];
+        return (first && first.msg) ? first.msg.replace(/^Value error,\s*/i, '') : null;
+      }
+      return null;
+    }
+
+    function displayNameFromEmail(email) {
+      const local = (email || '').split('@')[0] || 'there';
+      return local.replace(/[._-]+/g, ' ').replace(/(^\w|\s\w)/g, m => m.toUpperCase());
+    }
+
+    // Persist the issued session. `vitta_token` is the bearer token js/api.js
+    // sends; `vitta_user` keeps the display fields the dashboard expects.
+    function saveAuthSession(tokenResp, displayName) {
+      localStorage.setItem('vitta_token', tokenResp.access_token);
+      localStorage.setItem('vitta_token_expires', tokenResp.expires_at || '');
+      const email = (tokenResp.user && tokenResp.user.email) || '';
       const user = {
-        name: name,
+        id: (tokenResp.user && tokenResp.user.id) || null,
         email: email,
+        name: displayName || displayNameFromEmail(email),
         plan: 'Plus Plan',
-        scansLeft: 'Unlimited',
-        memberSince: 'August 2024',
-        payer: 'Blue Cross Blue Shield',
-        memberId: 'BCBS-98214-X8',
-        groupNo: 'GRP-55420'
+        scansLeft: 'Unlimited'
       };
       localStorage.setItem('vitta_user', JSON.stringify(user));
+    }
+
+    async function handleSubmit(e) {
+      e.preventDefault();
+      hideError();
+      const email = document.getElementById('inputEmail').value.trim();
+      const password = document.getElementById('inputPassword').value;
+      const name = document.getElementById('inputName').value.trim();
+
+      if (!email || !password) { showError('Please enter your email and password.'); return; }
+      if (mode === 'signup' && password.length < 8) {
+        showError('Password must be at least 8 characters.'); return;
+      }
+
+      const idleLabel = mode === 'signin' ? 'Sign In to Dashboard' : 'Create Free Account';
+      setBusy(true);
+      try {
+        const path = mode === 'signup' ? '/auth/register' : '/auth/login';
+        const tokenResp = await authFetch(path, { email, password });
+        saveAuthSession(tokenResp, mode === 'signup' ? (name || null) : null);
+        window.location.href = 'app.html';
+      } catch (err) {
+        setBusy(false, idleLabel);
+        showError(err.message || 'Something went wrong. Please try again.');
+      }
+    }
+
+    // Demo convenience: register the demo account on first run, or sign in if it
+    // already exists (409). Uses the pre-filled demo credentials.
+    async function fillDemoAndSubmit() {
+      hideError();
+      const email = 'alex.sharma@vitta.ai';
+      const password = 'demo123456';
+      document.getElementById('inputEmail').value = email;
+      document.getElementById('inputPassword').value = password;
+      setBusy(true);
+      try {
+        let tokenResp;
+        try {
+          tokenResp = await authFetch('/auth/register', { email, password });
+        } catch (err) {
+          if (err.status === 409) {
+            tokenResp = await authFetch('/auth/login', { email, password });
+          } else {
+            throw err;
+          }
+        }
+        saveAuthSession(tokenResp, 'Alex Sharma');
+        window.location.href = 'app.html';
+      } catch (err) {
+        setBusy(false, 'Sign In to Dashboard');
+        showError(err.message || 'Could not sign in to the demo account.');
+      }
+    }
+
+    // Social OAuth is not wired to a backend yet — be honest rather than faking
+    // a session that would fail against the real API.
+    function handleSocial(provider) {
+      showError('Social sign-in (' + provider + ") isn't available yet — please sign in with email.");
     }
   </script>
 </body>

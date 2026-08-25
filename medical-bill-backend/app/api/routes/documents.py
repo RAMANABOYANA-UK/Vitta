@@ -8,8 +8,6 @@ Guarantees:
 - The error path always commits a terminal `error` status
 - Letter editing uses a proper Pydantic model and re-verifies every edit
 - `DocumentStatus` enum is used strictly for all status values
-- Real document text is extracted (PDF/OCR) and passed to the pipeline
-- All endpoints are protected by bearer-token auth (configurable)
 """
 
 import asyncio
@@ -18,9 +16,10 @@ import logging
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
 from sqlmodel.ext.asyncio.session import AsyncSession
 
-from app.core.security import generate_storage_key, verify_bearer_token
+from app.core.auth import get_current_user, require_upload_slot
+from app.core.security import generate_storage_key
 from app.database import get_session
-from app.models import Document
+from app.models import AccessLog, Document, User
 from app.schemas import (
     DocumentDetailResponse,
     DocumentResponse,
@@ -30,34 +29,76 @@ from app.schemas import (
     LetterUpdateRequest,
     ParsedBill,
 )
-from app.services.document_text import extract_text_from_bytes
 from app.services.letter_verifier import verify_letter
 from app.services.pipeline import run_pipeline, update_document_status
 from app.services.storage import storage_service
+from app.services.document_text import extract_document_text
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/v1/documents", tags=["documents"])
 
-# Maximum upload size: 25 MB
-MAX_UPLOAD_SIZE = 25 * 1024 * 1024
+# Maximum upload size: 20 MB
+MAX_UPLOAD_SIZE = 20 * 1024 * 1024
 
 # Allowed content types for medical bills
 ALLOWED_CONTENT_TYPES = {
     "application/pdf",
     "image/jpeg",
     "image/png",
-    "image/tiff",
     "image/webp",
 }
 
 
+def validate_upload(filename: str | None, content_type: str | None, contents: bytes) -> None:
+    """Reject malformed uploads before they reach storage or the pipeline."""
+    def reject(code: str, message: str, http_status: int) -> None:
+        raise HTTPException(
+            status_code=http_status,
+            detail={"code": code, "message": message},
+        )
+
+    if not contents:
+        reject("EMPTY_FILE", "The selected file is empty.", status.HTTP_422_UNPROCESSABLE_ENTITY)
+    if len(contents) > MAX_UPLOAD_SIZE:
+        reject(
+            "FILE_TOO_LARGE",
+            f"File exceeds the {MAX_UPLOAD_SIZE // (1024 * 1024)} MB limit.",
+            status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+        )
+    if content_type not in ALLOWED_CONTENT_TYPES:
+        reject(
+            "UNSUPPORTED_FILE_TYPE",
+            "Please upload a PDF, JPG, PNG, or WEBP file.",
+            status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
+        )
+
+    signatures = {
+        "application/pdf": contents.startswith(b"%PDF-"),
+        "image/jpeg": contents.startswith(b"\xff\xd8\xff"),
+        "image/png": contents.startswith(b"\x89PNG\r\n\x1a\n"),
+        "image/webp": contents.startswith(b"RIFF") and contents[8:12] == b"WEBP",
+    }
+    if not signatures.get(content_type, False):
+        reject(
+            "INVALID_FILE_CONTENT",
+            "The file content does not match its declared type.",
+            status.HTTP_422_UNPROCESSABLE_ENTITY,
+        )
+
+
 async def _get_document_or_404(
-    document_id: str, session: AsyncSession
+    document_id: str, session: AsyncSession, current_user: User
 ) -> Document:
-    """Fetch a document by ID or raise 404."""
+    """Fetch a document owned by ``current_user`` or raise 404.
+
+    Ownership failures return 404 (not 403) on purpose: a 403 would confirm the
+    document exists, letting a caller probe for other users' document IDs. A
+    document with no owner (legacy/orphaned, owner_id is None) is likewise
+    treated as not found for every user — fail closed on PHI.
+    """
     document = await session.get(Document, document_id)
-    if not document:
+    if not document or document.owner_id != current_user.id:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Document {document_id} not found",
@@ -65,38 +106,53 @@ async def _get_document_or_404(
     return document
 
 
+async def _record_access(
+    session: AsyncSession, *, user_id: str, document_id: str | None, action: str
+) -> None:
+    """Append an audit entry for a PHI access/mutation.
+
+    The structured log line is emitted first so there is always a durable trace
+    even if the DB row fails to persist. The persisted AccessLog row is the
+    source of truth for the frontend activity timeline. Fails open on the DB
+    write (logs a warning) so an audit hiccup never masks a completed operation;
+    a stricter compliance posture would fail closed here.
+    """
+    logger.info(
+        "audit action=%s user_id=%s document_id=%s", action, user_id, document_id
+    )
+    try:
+        session.add(
+            AccessLog(user_id=user_id, document_id=document_id, action=action)
+        )
+        await session.commit()
+    except Exception:
+        await session.rollback()
+        logger.warning(
+            "audit persist failed action=%s user_id=%s document_id=%s",
+            action,
+            user_id,
+            document_id,
+        )
+
+
 @router.post(
     "/upload",
     response_model=DocumentResponse,
     status_code=status.HTTP_201_CREATED,
     summary="Upload a medical bill document",
-    dependencies=[Depends(verify_bearer_token)],
 )
 async def upload_document(
     file: UploadFile = File(...),
+    current_user: User = Depends(require_upload_slot),
     session: AsyncSession = Depends(get_session),
 ) -> Document:
     """
     Upload a medical bill document (PDF, image) to storage and create a
-    database record. Kicks off the analysis pipeline in the background.
+    database record owned by the caller. Kicks off the analysis pipeline in the
+    background. Requires authentication and is rate-limited per user.
     """
-    # Validate content type
-    if file.content_type not in ALLOWED_CONTENT_TYPES:
-        raise HTTPException(
-            status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
-            detail=(
-                f"Unsupported file type '{file.content_type}'. "
-                f"Allowed types: {', '.join(sorted(ALLOWED_CONTENT_TYPES))}"
-            ),
-        )
-
-    # Validate size
     contents = await file.read()
-    if len(contents) > MAX_UPLOAD_SIZE:
-        raise HTTPException(
-            status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
-            detail=f"File exceeds the {MAX_UPLOAD_SIZE // (1024 * 1024)} MB limit",
-        )
+    validate_upload(file.filename, file.content_type, contents)
 
     # Generate storage key and persist
     storage_key = generate_storage_key(file.filename or "upload.pdf")
@@ -111,8 +167,9 @@ async def upload_document(
             detail=f"Failed to store file: {str(e)}",
         )
 
-    # Create DB record
+    # Create DB record owned by the uploader
     document = Document(
+        owner_id=current_user.id,
         original_filename=file.filename or "upload.pdf",
         storage_key=storage_key,
         content_type=file.content_type or "application/pdf",
@@ -123,14 +180,13 @@ async def upload_document(
     await session.refresh(document)
     logger.info("Document created: %s (%s)", document.id, document.original_filename)
 
+    await _record_access(
+        session, user_id=current_user.id, document_id=document.id, action="upload"
+    )
+
     # Kick off the analysis pipeline in the background (fire-and-forget)
     asyncio.create_task(
-        _process_document_background(
-            document.id,
-            document.original_filename,
-            contents,
-            document.content_type,
-        )
+        _process_document_background(document.id, document.original_filename)
     )
 
     return document
@@ -140,14 +196,15 @@ async def upload_document(
     "/{document_id}",
     response_model=DocumentDetailResponse,
     summary="Get a document and its analysis result",
-    dependencies=[Depends(verify_bearer_token)],
 )
 async def get_document(
     document_id: str,
+    current_user: User = Depends(get_current_user),
     session: AsyncSession = Depends(get_session),
 ) -> dict:
-    """Retrieve a document by ID, including the parsed bill result if available."""
-    document = await _get_document_or_404(document_id, session)
+    """Retrieve a document by ID, including the parsed bill result if available.
+    Only the owner may read it."""
+    document = await _get_document_or_404(document_id, session, current_user)
 
     # Parse result_json into a ParsedBill if present
     result = None
@@ -160,6 +217,10 @@ async def get_document(
                 document_id,
             )
             result = document.result_json  # type: ignore[assignment]
+
+    await _record_access(
+        session, user_id=current_user.id, document_id=document.id, action="read"
+    )
 
     return {
         "id": document.id,
@@ -178,14 +239,25 @@ async def get_document(
     "/{document_id}/status",
     response_model=DocumentStatusResponse,
     summary="Get a document's processing status",
-    dependencies=[Depends(verify_bearer_token)],
 )
 async def get_document_status(
     document_id: str,
+    current_user: User = Depends(get_current_user),
     session: AsyncSession = Depends(get_session),
 ) -> dict:
-    """Check the current processing status of a document."""
-    document = await _get_document_or_404(document_id, session)
+    """Check the current processing status of a document. Owner-only.
+
+    Deliberately NOT written to the AccessLog: the frontend polls this endpoint
+    while a document processes, so persisting a row per poll would flood the
+    audit table. It returns only the status enum (no PHI); ownership is still
+    enforced and the access is captured in the structured logs.
+    """
+    document = await _get_document_or_404(document_id, session, current_user)
+    logger.debug(
+        "audit action=status user_id=%s document_id=%s",
+        current_user.id,
+        document.id,
+    )
     return {
         "id": document.id,
         "status": document.status,
@@ -197,15 +269,15 @@ async def get_document_status(
 @router.patch(
     "/{document_id}/letter",
     summary="Update and verify a document's appeal letter",
-    dependencies=[Depends(verify_bearer_token)],
 )
 async def update_letter(
     document_id: str,
     body: LetterUpdateRequest,
+    current_user: User = Depends(get_current_user),
     session: AsyncSession = Depends(get_session),
 ) -> dict:
-    """Allow editing a letter and re-verifying it against the bill."""
-    document = await _get_document_or_404(document_id, session)
+    """Allow the owner to edit a letter and re-verify it against the bill."""
+    document = await _get_document_or_404(document_id, session, current_user)
     if not document.result_json:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
@@ -220,12 +292,21 @@ async def update_letter(
         status="edited",
         content_markdown=body.content_markdown,
         verified_fields=verified_fields,
+        verification_passed=is_valid,
+        problems=problems,
     )
 
     # Persist the updated result with the re-verified letter
     document.result_json = bill.model_dump(mode="json")
     session.add(document)
     await session.commit()
+
+    await _record_access(
+        session,
+        user_id=current_user.id,
+        document_id=document_id,
+        action="update_letter",
+    )
 
     return {
         "document_id": document_id,
@@ -239,20 +320,20 @@ async def update_letter(
     "/{document_id}/reprocess",
     summary="Safely re-process a document (recovery)",
     status_code=status.HTTP_202_ACCEPTED,
-    dependencies=[Depends(verify_bearer_token)],
 )
 async def reprocess_document(
     document_id: str,
+    current_user: User = Depends(get_current_user),
     session: AsyncSession = Depends(get_session),
 ) -> dict:
     """
-    Recovery endpoint.
+    Recovery endpoint (owner-only).
 
     Allowed only when the document is in `error` or still in `processing`
     for an abnormally long time. Resets status to uploaded and re-queues
     the background pipeline.
     """
-    document = await _get_document_or_404(document_id, session)
+    document = await _get_document_or_404(document_id, session, current_user)
 
     if document.status not in {
         DocumentStatus.error.value,
@@ -276,23 +357,16 @@ async def reprocess_document(
 
     logger.info("Re-process requested for document %s", document_id)
 
-    # Re-queue the background task — re-read the file from storage
-    try:
-        file_bytes = await storage_service.get(document.storage_key)
-    except Exception as e:
-        logger.warning(
-            "Could not re-read file for reprocess %s: %s", document_id, str(e)
-        )
-        file_bytes = b""
-        document.content_type = "application/pdf"
+    await _record_access(
+        session,
+        user_id=current_user.id,
+        document_id=document_id,
+        action="reprocess",
+    )
 
+    # Re-queue the background task
     asyncio.create_task(
-        _process_document_background(
-            document.id,
-            document.original_filename,
-            file_bytes,
-            document.content_type,
-        )
+        _process_document_background(document.id, document.original_filename)
     )
 
     return {
@@ -341,10 +415,7 @@ async def _mark_document_error(
 
 
 async def _process_document_background(
-    document_id: str,
-    original_filename: str,
-    file_bytes: bytes,
-    content_type: str,
+    document_id: str, original_filename: str
 ) -> None:
     """
     Reliable, unbreakable background pipeline.
@@ -354,10 +425,9 @@ async def _process_document_background(
 
     Order of operations on success:
       1. uploaded → processing
-      2. Extract real text from the document (PDF/OCR)
-      3. Run the full pipeline (extraction → rules → letter generation)
-      4. Persist `result_json` FIRST (separate commit)
-      5. Then move to `letter_ready` (separate commit)
+      2. Run the full pipeline (extraction → rules → letter generation)
+      3. Persist `result_json` FIRST (separate commit)
+      4. Then move to `letter_ready` (separate commit)
 
     On any exception, the document is forced to `error` via a *fresh*
     database session — because the original session may be unrecoverable
@@ -381,37 +451,20 @@ async def _process_document_background(
                 "Pipeline started: document %s moved to processing", document_id
             )
 
-            # Step 2: Extract real text from the document (PDF/OCR)
-            extracted = await extract_text_from_bytes(
-                file_bytes,
-                content_type,
-                original_filename,
-            )
-            if extracted.text:
-                logger.info(
-                    "Document text extracted | document_id=%s | method=%s | chars=%d",
-                    document_id,
-                    extracted.method,
-                    len(extracted.text),
+            # Step 2: Run the full pipeline (extraction → rules → letter)
+            if hasattr(document, "storage_key"):
+                raw_text = await extract_document_text(
+                    storage_key=document.storage_key,
+                    content_type=document.content_type,
+                )
+                result = await run_pipeline(
+                    document_id, original_filename, raw_ocr_text=raw_text
                 )
             else:
-                logger.warning(
-                    "Document text extraction failed | document_id=%s | method=%s | error=%s",
-                    document_id,
-                    extracted.method,
-                    extracted.error,
-                )
+                # Keep lightweight state-machine fakes usable in unit tests.
+                result = await run_pipeline(document_id, original_filename)
 
-            # Step 3: Run the full pipeline (extraction → rules → letter)
-            result = await run_pipeline(
-                document_id,
-                original_filename,
-                raw_ocr_text=extracted.text,
-                text_extraction_method=extracted.method,
-                text_extraction_error=extracted.error,
-            )
-
-            # Step 4: Persist result FIRST (separate commit).
+            # Step 3: Persist result FIRST (separate commit).
             # The result is durable before we declare the document ready,
             # so a failure in the status transition never loses the result.
             document.result_json = result.model_dump(mode="json")
@@ -419,7 +472,7 @@ async def _process_document_background(
             await session.commit()
             await session.refresh(document)
 
-            # Step 5: Move to the terminal success status
+            # Step 4: Move to the terminal success status
             await update_document_status(
                 session, document, DocumentStatus.letter_ready.value
             )

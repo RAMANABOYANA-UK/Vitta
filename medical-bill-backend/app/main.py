@@ -3,17 +3,13 @@ FastAPI application entry point for the medical bill analysis platform.
 """
 import logging
 from contextlib import asynccontextmanager
-from datetime import datetime, timedelta, timezone
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from sqlalchemy import select
 
-from app.api.routes import auth, documents, health
+from app.api.routes import auth, documents, gateway, health
 from app.config import settings
-from app.database import AsyncSessionLocal, init_db
-from app.models import Document
-from app.schemas import DocumentStatus
+from app.database import init_db
 
 # ---------------------------------------------------------------------------
 # Logging configuration
@@ -27,42 +23,7 @@ logging.basicConfig(
 
 logger = logging.getLogger(__name__)
 
-APP_VERSION = "0.3.0"
-
-
-async def sweep_stuck_documents(max_age_minutes: int = 30) -> int:
-    """
-    On startup, mark any documents stuck in `processing` for longer than
-    `max_age_minutes` as `error` so they are never permanently stuck.
-
-    Returns the number of documents marked as error.
-    """
-    cutoff = datetime.now(timezone.utc) - timedelta(minutes=max_age_minutes)
-    marked = 0
-    try:
-        async with AsyncSessionLocal() as session:
-            statement = select(Document).where(
-                Document.status == DocumentStatus.processing.value,
-                Document.updated_at < cutoff,
-            )
-            result = await session.execute(statement)
-            stuck_docs = result.scalars().all()
-            for doc in stuck_docs:
-                doc.status = DocumentStatus.error.value
-                doc.error_message = "Stuck processing timeout"
-                session.add(doc)
-                marked += 1
-            if marked:
-                await session.commit()
-                logger.warning(
-                    "Startup sweep: marked %d stuck document(s) as error",
-                    marked,
-                )
-            else:
-                logger.info("Startup sweep: no stuck documents found")
-    except Exception:
-        logger.exception("Startup sweep failed")
-    return marked
+APP_VERSION = "0.1.0"
 
 
 @asynccontextmanager
@@ -72,8 +33,6 @@ async def lifespan(app: FastAPI):
     try:
         await init_db()
         logger.info("Database initialized")
-        # Recover stuck documents from previous runs
-        await sweep_stuck_documents()
     except Exception as e:
         logger.error("Failed to initialize database: %s", e)
         raise
@@ -95,16 +54,13 @@ app = FastAPI(
 # CORS middleware
 # ---------------------------------------------------------------------------
 
-# In development, allow all origins. In production, restrict to known frontends.
-ALLOWED_ORIGINS = ["*"] if settings.ENVIRONMENT == "development" else [
-    "http://localhost:3000",
-    "http://localhost:5173",
-    "https://app.medbills.example.com",
-]
-
+# Always an explicit allowlist (from settings). A wildcard "*" is invalid
+# together with allow_credentials=True — browsers refuse to send the
+# Authorization header / credentials to a wildcard origin — so we never use one.
+# Configure origins via CORS_ALLOWED_ORIGINS (comma-separated) per environment.
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=ALLOWED_ORIGINS,
+    allow_origins=settings.cors_origins_list,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -115,8 +71,13 @@ app.add_middleware(
 # ---------------------------------------------------------------------------
 
 app.include_router(health.router)
-app.include_router(documents.router)
 app.include_router(auth.router)
+app.include_router(documents.router)
+# Additive adapter layer that serves the existing frontend's resource-oriented
+# contract (/upload, /jobs, /bills) on top of the document pipeline. Included
+# after documents so the canonical /api/v1/documents/* routes take precedence
+# for any shared path (there are none today — the gateway uses distinct paths).
+app.include_router(gateway.router)
 
 
 @app.get("/", tags=["root"])

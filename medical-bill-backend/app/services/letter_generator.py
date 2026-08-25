@@ -40,7 +40,13 @@ async def generate_appeal_letter(bill: ParsedBill) -> Letter:
 
         is_valid, verified_fields, problems = verify_letter(bill, content)
         if is_valid:
-            return Letter(status="draft", content_markdown=content, verified_fields=verified_fields)
+            return Letter(
+                status="draft",
+                content_markdown=content,
+                verified_fields=verified_fields,
+                verification_passed=True,
+                problems=[],
+            )
         logger.warning("Letter failed verification (attempt %d) | problems=%s", attempt, problems)
 
     return _template_letter(bill, note="LLM output failed verification — safe template used")
@@ -123,5 +129,11 @@ Sincerely,
 
     if note:
         content += f"\n\n<!-- {note} -->"
-    _, verified_fields, _ = verify_letter(bill, content)
-    return Letter(status="draft", content_markdown=content.strip(), verified_fields=verified_fields)
+    is_valid, verified_fields, problems = verify_letter(bill, content)
+    return Letter(
+        status="draft",
+        content_markdown=content.strip(),
+        verified_fields=verified_fields,
+        verification_passed=is_valid,
+        problems=problems,
+    )

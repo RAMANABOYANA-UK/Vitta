@@ -12,7 +12,53 @@
      API INSTANCE
      ========================================================== */
 
-  const api = window.VittaAPI.create();
+  // Make any stored bearer token available to the client so authenticated
+  // (real-mode) requests carry it. We intentionally do NOT force "real" mode
+  // here: VittaAPI.create() keeps its own resolution (mock by default; real via
+  // ?api=real or window.VITTA_API_MODE). The app's endpoint paths are reconciled
+  // with the backend as a separate workstream, so flipping to real mode blindly
+  // would break the mock demo.
+  const authToken = readStoredToken();
+  const api = window.VittaAPI.create({ authToken });
+
+  function readStoredToken() {
+    try {
+      const token = localStorage.getItem("vitta_token");
+      if (!token) return null;
+      const exp = localStorage.getItem("vitta_token_expires");
+      if (exp) {
+        const expMs = Date.parse(exp);
+        if (!isNaN(expMs) && expMs <= Date.now()) {
+          // Expired — clear and behave as logged-out.
+          localStorage.removeItem("vitta_token");
+          localStorage.removeItem("vitta_token_expires");
+          return null;
+        }
+      }
+      return token;
+    } catch (e) {
+      return null;
+    }
+  }
+
+  // Clear the session and return to the login page. Best-effort server-side
+  // revocation first (only meaningful in real mode); we redirect regardless.
+  function vittaLogout() {
+    try {
+      if (authToken && api && typeof api.logout === "function") {
+        const p = api.logout();
+        if (p && typeof p.catch === "function") p.catch(function () {});
+      }
+    } catch (e) { /* ignore */ }
+    try {
+      localStorage.removeItem("vitta_token");
+      localStorage.removeItem("vitta_token_expires");
+      localStorage.removeItem("vitta_user");
+    } catch (e) { /* ignore */ }
+    window.location.href = "login.html";
+  }
+  // Exposed for the inline "Sign Out" control in app.html.
+  window.vittaLogout = vittaLogout;
 
   /* ==========================================================
      STATE
@@ -155,6 +201,20 @@
   const uploadZone = $("#uploadZone");
   const fileInput = $("#fileInput");
   const cameraInput = $("#cameraInput");
+  const MAX_UPLOAD_SIZE = 20 * 1024 * 1024;
+  const ALLOWED_UPLOAD_TYPES = new Set(["application/pdf", "image/jpeg", "image/png", "image/webp"]);
+  const ALLOWED_UPLOAD_EXTENSIONS = new Set(["pdf", "jpg", "jpeg", "png", "webp"]);
+
+  function validateUploadFile(file) {
+    if (!file || !file.name) return { code: "EMPTY_FILE", message: "Choose a bill or EOB file to upload." };
+    if (!file.size) return { code: "EMPTY_FILE", message: "This file is empty. Choose a bill or EOB with content." };
+    if (file.size > MAX_UPLOAD_SIZE) return { code: "FILE_TOO_LARGE", message: "Files must be 20 MB or smaller." };
+    const extension = file.name.toLowerCase().split(".").pop();
+    if (!ALLOWED_UPLOAD_EXTENSIONS.has(extension) || !ALLOWED_UPLOAD_TYPES.has(file.type)) {
+      return { code: "UNSUPPORTED_FILE_TYPE", message: "Please choose a PDF, JPG, PNG, or WEBP file." };
+    }
+    return null;
+  }
 
   function triggerUpload() {
     if (state.uploadPending) {
@@ -226,6 +286,9 @@
     state.uploadErrorShown = true;
     const titles = {
       UNSUPPORTED_FILE_TYPE: "Unsupported file type",
+      EMPTY_FILE: "Empty file",
+      FILE_TOO_LARGE: "File is too large",
+      INVALID_FILE_CONTENT: "File could not be read",
       PAGE_LIMIT_EXCEEDED: "Page limit exceeded",
       NETWORK: "Network error"
     };
@@ -241,6 +304,13 @@
   const PIPELINE_TIMEOUT_MS = 120000; // 2 min — long multi-service pipelines can be slow
 
   function startUpload(file, sampleKey) {
+    if (!sampleKey) {
+      const validationError = validateUploadFile(file);
+      if (validationError) {
+        showUploadError(validationError.code, validationError.message);
+        return;
+      }
+    }
     hideUploadError();
     state.uploadPending = true;
     state.lastUpload = { file, sampleKey };
@@ -252,6 +322,12 @@
     state.score = null;
     state.scoreComplete = false;
     state.pipelineStatus = null;
+    state._letterDirty = false;
+    state._scoreMarkedStale = false;
+    state._uploadStartedAt = Date.now();
+    // Hide any prior letter-verification verdict and sample-data banner.
+    const _vs = $("#letterVerifyStatus"); if (_vs) _vs.hidden = true;
+    const _sdb = $("#sampleDataBanner"); if (_sdb) _sdb.hidden = true;
 
     // Clear any previous pipeline timeout
     if (state._pipelineTimer) {
@@ -268,6 +344,7 @@
     ringFill.style.strokeDashoffset = CIRC;
     $("#scanPhaseLabel").textContent = "uploading";
     $("#scanTitle").textContent = "Uploading your bill…";
+    $("#scanSub").textContent = "Most analyses take 15–60 seconds. Keep this window open while we process your document.";
     $("#pipelineError").hidden = true;
     $("#viewPartialResultsBtn").hidden = true;
     document.querySelectorAll(".scan-step").forEach((s) => {
@@ -277,6 +354,14 @@
     });
 
     showPage("scan");
+
+    const updateElapsed = () => {
+      if (!state.uploadPending || !state._uploadStartedAt) return;
+      const elapsed = Math.round((Date.now() - state._uploadStartedAt) / 1000);
+      $("#scanSub").dataset.elapsed = elapsed;
+      $("#scanSub").textContent = "Most analyses take 15–60 seconds. Elapsed time: " + elapsed + "s.";
+    };
+    state._elapsedTimer = setInterval(updateElapsed, 1000);
 
     api.upload(file)
       .then((resp) => {
@@ -289,6 +374,7 @@
         state._pipelineTimer = setTimeout(() => {
           if (state.uploadPending && state.jobId === resp.jobId) {
             state.uploadPending = false;
+            clearInterval(state._elapsedTimer);
             $("#pipelineErrorTitle").textContent = "Pipeline timed out";
             $("#pipelineErrorMsg").textContent = "The analysis is taking longer than expected. Your document is safe — you can retry or upload a different file.";
             $("#pipelineError").hidden = false;
@@ -298,6 +384,7 @@
       })
       .catch((err) => {
         state.uploadPending = false;
+        clearInterval(state._elapsedTimer);
         // Upload-time failure (unsupported type, page limit)
         if (err && err.code) {
           // Exit scan view back to welcome with inline error
@@ -321,6 +408,12 @@
   function onPipelineUpdate(status) {
     state.pipelineStatus = status;
     const CIRC = 103.67;
+
+    if (status.status === "polling_error") {
+      $("#scanTitle").textContent = "Still processing your bill";
+      $("#scanSub").textContent = "We temporarily lost the status connection. Retrying automatically…";
+      return;
+    }
 
     // Update ring + phase label
     $("#scanPct").textContent = Math.round(status.progress) + "%";
@@ -393,12 +486,14 @@
       $("#pipelineError").hidden = false;
       $("#scanTitle").textContent = "Analysis failed";
       state.uploadPending = false;
+      clearInterval(state._elapsedTimer);
       return;
     }
 
     // Success
     if (status.status === "done") {
       state.uploadPending = false;
+      clearInterval(state._elapsedTimer);
       // Use the final payloads
       if (status.partialBill) state.bill = status.partialBill;
       if (status.partialFlags) {
@@ -568,6 +663,7 @@
 
   function renderAll() {
     if (!currentData) return;
+    renderSampleDataBanner();
     renderBillHeader();
     renderReconStrip();
     renderTabCounts();
@@ -1354,7 +1450,22 @@
   function renderLetter() {
     const ta = $("#letterTextarea");
     const d = currentData;
-    if (!d) { ta.value = ""; return; }
+    if (!d) { ta.value = ""; renderLetterVerification(); return; }
+
+    // Never clobber edits the user is actively making but hasn't saved yet.
+    if (state._letterDirty) { renderLetterVerification(); return; }
+
+    // Prefer the backend's verified letter. It is generated and fact-checked
+    // server-side against the parsed bill (see letter_verifier), so it is the
+    // source of truth. The client-side templates below are a fallback ONLY for
+    // when no backend letter is available (e.g. the built-in mock API, or a
+    // document processed before letters were persisted).
+    const backend = state.bill && state.bill.letter;
+    if (backend && backend.contentMarkdown) {
+      ta.value = backend.contentMarkdown;
+      renderLetterVerification();
+      return;
+    }
 
     if (d.isClean) {
       ta.value = `Re: Claim #${d.claim} — Record of Claim Review
@@ -1367,6 +1478,7 @@ If you believe there is an issue with this claim, please contact me.
 
 Sincerely,
 Alex Sharma`;
+      renderLetterVerification();
       return;
     }
 
@@ -1404,16 +1516,100 @@ Alex Sharma
 Claim #${d.claim}`;
 
     ta.value = letter;
+    renderLetterVerification();
   }
 
-  // Letter edit → mark score stale (recompute hook)
+  // Reflect the backend's fact-checked verification verdict for the current
+  // letter. Shown only when a backend-verified letter is loaded — the
+  // client-side fallback template is NOT backend-verified, so we display no
+  // verdict rather than implying a check that never ran.
+  function renderLetterVerification() {
+    const box = $("#letterVerifyStatus");
+    if (!box) return;
+    const letter = state.bill && state.bill.letter;
+    if (!letter || !letter.contentMarkdown || state._letterDirty) {
+      box.hidden = true;
+      return;
+    }
+    const problems = letter.problems || [];
+    const passed = !!letter.verificationPassed;
+    box.hidden = false;
+    box.className = "letter-verify " + (passed ? "ok" : "warn");
+    $("#letterVerifyIcon").innerHTML = passed ? ICONS.check : ICONS.warn;
+    const fieldCount = (letter.verifiedFields || []).length;
+    if (passed) {
+      $("#letterVerifyTitle").textContent =
+        "Verified against your bill" + (fieldCount ? " · " + fieldCount + " field" + (fieldCount === 1 ? "" : "s") + " checked" : "");
+      $("#letterVerifyProblems").hidden = true;
+      $("#letterVerifyProblems").innerHTML = "";
+    } else {
+      $("#letterVerifyTitle").textContent = problems.length
+        ? "Review needed before sending"
+        : "Not yet verified against your bill";
+      if (problems.length) {
+        $("#letterVerifyProblems").hidden = false;
+        $("#letterVerifyProblems").innerHTML = problems.map((p) => "<li>" + esc(p) + "</li>").join("");
+      } else {
+        $("#letterVerifyProblems").hidden = true;
+        $("#letterVerifyProblems").innerHTML = "";
+      }
+    }
+  }
+
+  // Degraded-mode disclosure: the pipeline synthesized sample data instead of
+  // reading the upload (extractionMode === "sample"). Surface it prominently so
+  // the figures are never mistaken for the user's real bill.
+  function renderSampleDataBanner() {
+    const banner = $("#sampleDataBanner");
+    if (!banner) return;
+    banner.hidden = !(state.bill && state.bill.extractionMode === "sample");
+  }
+
+  // Letter edit → mark the draft dirty (so renders don't clobber it) and the
+  // score stale (recompute hook).
   $("#letterTextarea").addEventListener("input", () => {
+    state._letterDirty = true;
+    // An edited, unsaved letter is no longer the verified backend text.
+    const vs = $("#letterVerifyStatus");
+    if (vs) vs.hidden = true;
     const d = currentData;
     if (!d || !d.scoreReady) return;
     if (!state._scoreMarkedStale) {
       state._scoreMarkedStale = true;
       $("#scoreRecompute").hidden = false;
     }
+  });
+
+  // Save & re-verify: route the edited letter through the backend verifier so
+  // its verified/problem status reflects a real, fact-checked pass over the
+  // text — the same core the pipeline uses. Falls back gracefully on the mock.
+  $("#saveLetterBtn").addEventListener("click", (e) => {
+    e.preventDefault();
+    if (!state.documentId) { showToast("Nothing to save yet — analyze a bill first."); return; }
+    const markdown = $("#letterTextarea").value || "";
+    if (!markdown.trim()) { showToast("The letter is empty — add some text before saving."); return; }
+    showToast("Saving and re-verifying your letter…");
+    api.updateLetter(state.documentId, markdown)
+      .then((res) => {
+        const letter = (res && res.letter) ? res.letter : {
+          status: "edited",
+          contentMarkdown: markdown,
+          verifiedFields: [],
+          verificationPassed: !!(res && res.isFullyVerified),
+          problems: (res && res.problems) || [],
+        };
+        state.bill = state.bill || {};
+        state.bill.letter = letter;
+        state._letterDirty = false;
+        // The letter is saved; drop the "edited — recompute" nudge.
+        state._scoreMarkedStale = false;
+        $("#scoreRecompute").hidden = true;
+        renderLetterVerification();
+        showToast(letter.verificationPassed
+          ? "Letter saved — every claim verified against your bill."
+          : "Letter saved — some claims still need review before sending.");
+      })
+      .catch(() => showToast("Could not save the letter — please try again."));
   });
 
   $("#recomputeScoreBtn").addEventListener("click", (e) => {

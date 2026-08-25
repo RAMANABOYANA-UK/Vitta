@@ -86,6 +86,7 @@ def _init_audit() -> Dict[str, Any]:
             "status": None,
             "verified_fields_count": 0,
             "verification_passed": None,
+            "problems": [],
         },
         "timings_ms": {},
         "completed_at": None,
@@ -96,8 +97,6 @@ async def run_pipeline(
     document_id: str,
     original_filename: str,
     raw_ocr_text: str | None = None,
-    text_extraction_method: str | None = None,
-    text_extraction_error: str | None = None,
 ) -> ParsedBill:
     """
     Fully observable pipeline.
@@ -106,13 +105,6 @@ async def run_pipeline(
     logger.info("Pipeline started | document_id=%s", document_id)
     audit = _init_audit()
     t0 = time.perf_counter()
-
-    # Record text extraction info in audit
-    audit["text_extraction"] = {
-        "method": text_extraction_method,
-        "error": text_extraction_error,
-        "chars": len(raw_ocr_text) if raw_ocr_text else 0,
-    }
 
     # Optional demo delay
     if settings.PIPELINE_DELAY_SECONDS > 0:
@@ -190,7 +182,12 @@ async def run_pipeline(
         audit["letter"]["status"] = result.letter.status
         verified = result.letter.verified_fields or []
         audit["letter"]["verified_fields_count"] = len(verified)
-        audit["letter"]["verification_passed"] = len(verified) > 0
+        # Authoritative pass/fail comes from the verifier (zero problems), not
+        # from the count of verified fields. A letter can carry verified fields
+        # AND unresolved problems simultaneously, so `len(verified) > 0` would
+        # wrongly report a partially-verified letter as passed.
+        audit["letter"]["verification_passed"] = result.letter.verification_passed
+        audit["letter"]["problems"] = list(result.letter.problems or [])
 
     logger.info(
         "Stage letter completed | document_id=%s | letter_status=%s | verified_fields=%d",

@@ -288,6 +288,26 @@ class Totals(BaseModel):
     def patient_responsibility_total(self, value: Optional[float]) -> None:
         self.patient_responsibility = value
 
+    # `allowed_total` / `paid_total` alias the contract fields `allowed` and
+    # `insurance_paid`. The persistence layer (app/db.py) reads all four totals
+    # via the `_total` names; omitting these two caused an AttributeError that
+    # 500'd /validate, /score and /pipeline whenever DATABASE_URL was set.
+    @property
+    def allowed_total(self) -> Optional[float]:
+        return self.allowed
+
+    @allowed_total.setter
+    def allowed_total(self, value: Optional[float]) -> None:
+        self.allowed = value
+
+    @property
+    def paid_total(self) -> Optional[float]:
+        return self.insurance_paid
+
+    @paid_total.setter
+    def paid_total(self, value: Optional[float]) -> None:
+        self.insurance_paid = value
+
 
 # ---------------------------------------------------------------------------
 # Pricing anomaly & appeal success (extensions)

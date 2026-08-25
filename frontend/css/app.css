@@ -386,6 +386,39 @@
 .warning-banner .wb-icon { width: 26px; height: 26px; border-radius: 8px; background: var(--amber-100); color: var(--amber-700); display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
 .warning-banner .wb-icon svg { width: 15px; height: 15px; }
 
+/* Degraded-mode / sample-data banner — deliberately distinct from the amber
+   low-confidence warning and the red error state. Signals that the data shown
+   was synthesized (demo extraction), not read from the user's upload. */
+.sample-data-banner {
+  display: flex;
+  gap: 13px;
+  align-items: flex-start;
+  background: #eef2ff;
+  border: 1px solid var(--indigo-500);
+  border-left-width: 4px;
+  border-radius: var(--radius-md);
+  padding: 14px 18px;
+  margin-bottom: 20px;
+  font-size: 13.5px;
+  color: #312e81;
+  line-height: 1.5;
+}
+.sample-data-banner strong { display: block; color: #312e81; margin-bottom: 2px; }
+.sample-data-banner .sdb-icon { width: 30px; height: 30px; border-radius: 8px; background: #e0e7ff; color: var(--indigo-600); display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+.sample-data-banner .sdb-icon svg { width: 17px; height: 17px; }
+
+/* Letter verification status (post save/re-verify) */
+.letter-verify { padding: 14px 16px; border-top: 1px solid var(--slate-200); font-size: 13px; }
+.letter-verify .lv-head { display: flex; align-items: center; gap: 9px; font-size: 13.5px; }
+.letter-verify .lv-icon { width: 22px; height: 22px; border-radius: 6px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+.letter-verify .lv-icon svg { width: 14px; height: 14px; }
+.letter-verify.ok .lv-icon { background: var(--teal-100); color: var(--teal-700); }
+.letter-verify.ok strong { color: var(--teal-700); }
+.letter-verify.warn .lv-icon { background: var(--amber-100); color: var(--amber-700); }
+.letter-verify.warn strong { color: var(--amber-800); }
+.letter-verify .lv-problems { margin: 10px 0 0; padding-left: 30px; color: var(--slate-700); }
+.letter-verify .lv-problems li { margin: 3px 0; }
+
 /* Upload error (inline) */
 .upload-error {
   display: flex;

@@ -6,16 +6,12 @@ The rest of the system just calls `extract_and_score()`.
 
 Design principles:
 - Optional: controlled by EXTRACTION_SERVICE_ENABLED
-- Never raises in development: always returns a usable ParsedBill
-- Strict mode (EXTRACTION_STRICT_MODE=true): raises on failure so the
-  caller can surface a structured error instead of silently using mock data
-- Normalizes Member 2's output to the backend ParsedBill contract
+- Never raises: always returns a usable ParsedBill
+- Graceful fallback to mock on any failure
 - Preserves extra fields that Member 2 may return
-- Clear logging: which path was used, timings, failures
 """
 
 import logging
-import time
 from datetime import datetime, timezone
 from typing import Optional
 
@@ -28,91 +24,6 @@ from app.services.mock_data import generate_mock_parsed_bill
 logger = logging.getLogger(__name__)
 
 
-class ExtractionServiceError(Exception):
-    """Raised when extraction fails in strict mode."""
-
-
-def _normalize_source_type(data: dict) -> str:
-    """Normalize Member 2's source_type to the backend's canonical set."""
-    st = data.get("source_type")
-    valid = {"bill", "eob", "unknown"}
-    if st in ("ocr_extraction_v0", None, ""):
-        return "unknown"
-    if st not in valid:
-        return "unknown"
-    return st
-
-
-def _normalize_denial_codes(data: dict) -> list:
-    """Normalize denial codes so every item has a 'code' key.
-
-    Member 2 may emit `carc` or `reason_code`; the backend contract
-    expects `code`. We preserve the original keys plus a normalized
-    `code` key.
-    """
-    denials = data.get("denial_codes") or []
-    norm_denials = []
-    for d in denials:
-        if not isinstance(d, dict):
-            continue
-        code = d.get("code") or d.get("carc") or d.get("reason_code")
-        item = dict(d)
-        if code:
-            item["code"] = str(code)
-        norm_denials.append(item)
-    return norm_denials
-
-
-def _normalize_appeal_prediction(data: dict) -> dict:
-    """Normalize appeal_prediction defaults."""
-    ap = data.get("appeal_prediction")
-    if isinstance(ap, dict):
-        if "success_probability" not in ap and "probability" in ap:
-            ap["success_probability"] = ap["probability"]
-        ap.setdefault("confidence_interval", [0.0, 1.0])
-        ap.setdefault("top_factors", [])
-        data["appeal_prediction"] = ap
-    return data
-
-
-def _normalize_totals(data: dict) -> dict:
-    """Ensure totals always has a billed value."""
-    totals = data.get("totals") or {}
-    if isinstance(totals, dict):
-        totals.setdefault("billed", 0.0)
-        data["totals"] = totals
-    return data
-
-
-def _normalize_member2_payload(data: dict) -> dict:
-    """Make Member 2 output backend-ParsedBill compatible."""
-    if not isinstance(data, dict):
-        return data
-
-    # source_type normalization
-    data["source_type"] = _normalize_source_type(data)
-
-    # denial_codes: carc -> code
-    data["denial_codes"] = _normalize_denial_codes(data)
-
-    # appeal_prediction defaults
-    _normalize_appeal_prediction(data)
-
-    # required-ish defaults
-    data.setdefault("patient", {})
-    data.setdefault("provider", {})
-    data.setdefault("payer", {})
-    data.setdefault("line_items", [])
-    data.setdefault("audit", {})
-    data.setdefault("letter", None)
-    data.setdefault("explanation", None)
-
-    # totals
-    _normalize_totals(data)
-
-    return data
-
-
 async def extract_and_score(
     document_id: str,
     original_filename: str,
@@ -123,28 +34,29 @@ async def extract_and_score(
 
     Path selection:
     1. If EXTRACTION_SERVICE_ENABLED=False → mock
-    2. If Member 2 is unreachable / times out / returns error:
-       - strict mode → raise ExtractionServiceError
-       - dev mode → fall back to mock
-    3. On success → return Member 2's ParsedBill (normalized)
+    2. If Member 2 is unreachable / times out / returns error → mock
+    3. On success → return Member 2's ParsedBill
     """
     if not settings.EXTRACTION_SERVICE_ENABLED:
         logger.info(
-            "Extraction service disabled — using mock | document_id=%s",
-            document_id,
+            "Extraction service disabled — using mock | document_id=%s", document_id
         )
         return _mock(document_id, original_filename)
 
     url = f"{settings.EXTRACTION_SERVICE_URL.rstrip('/')}/pipeline"
 
-    # Use real extracted text when available; otherwise a clear placeholder
-    payload_text = raw_ocr_text or f"[No text extracted for {original_filename}]"
     payload = {
         "document_id": document_id,
-        "raw_ocr_text": payload_text,
+        "raw_ocr_text": raw_ocr_text or "",
     }
 
-    t0 = time.perf_counter()
+    if not payload["raw_ocr_text"]:
+        logger.error(
+            "No extracted document text available | document_id=%s",
+            document_id,
+        )
+        return _mock(document_id, original_filename)
+
     try:
         async with httpx.AsyncClient(
             timeout=settings.EXTRACTION_SERVICE_TIMEOUT_SECONDS
@@ -153,12 +65,7 @@ async def extract_and_score(
             response.raise_for_status()
 
             data = response.json()
-
-            # Normalize Member 2's payload to the backend contract
-            normalized = _normalize_member2_payload(data)
-            bill = ParsedBill.model_validate(normalized)
-
-            elapsed_ms = round((time.perf_counter() - t0) * 1000, 1)
+            bill = ParsedBill.model_validate(data)
 
             # Light observability
             n_flags = sum(len(item.flags) for item in bill.line_items)
@@ -167,67 +74,45 @@ async def extract_and_score(
                 appeal_prob = getattr(bill.appeal_prediction, "success_probability", None)
 
             logger.info(
-                "Member 2 extraction+scoring succeeded | document_id=%s | "
-                "path=member2 | elapsed_ms=%.1f | flags=%d | appeal_prob=%s | "
-                "text_chars=%d",
+                "Member 2 extraction+scoring succeeded | document_id=%s | flags=%d | appeal_prob=%s",
                 document_id,
-                elapsed_ms,
                 n_flags,
                 appeal_prob,
-                len(payload_text),
             )
             return bill
 
     except httpx.TimeoutException:
-        elapsed_ms = round((time.perf_counter() - t0) * 1000, 1)
-        msg = (
-            f"Extraction service timed out after {settings.EXTRACTION_SERVICE_TIMEOUT_SECONDS}s "
-            f"| document_id={document_id} | elapsed_ms={elapsed_ms}"
+        logger.warning(
+            "Extraction service timed out after %.1fs — falling back to mock | document_id=%s",
+            settings.EXTRACTION_SERVICE_TIMEOUT_SECONDS,
+            document_id,
         )
-        logger.warning(msg)
-        return _handle_failure(document_id, original_filename, msg)
+        return _mock(document_id, original_filename)
 
     except httpx.ConnectError:
-        elapsed_ms = round((time.perf_counter() - t0) * 1000, 1)
-        msg = (
-            f"Extraction service unreachable at {settings.EXTRACTION_SERVICE_URL} "
-            f"| document_id={document_id} | elapsed_ms={elapsed_ms}"
+        logger.warning(
+            "Extraction service unreachable at %s — falling back to mock | document_id=%s",
+            settings.EXTRACTION_SERVICE_URL,
+            document_id,
         )
-        logger.warning(msg)
-        return _handle_failure(document_id, original_filename, msg)
+        return _mock(document_id, original_filename)
 
     except httpx.HTTPStatusError as e:
-        elapsed_ms = round((time.perf_counter() - t0) * 1000, 1)
-        msg = (
-            f"Extraction service returned HTTP {e.response.status_code} "
-            f"| document_id={document_id} | elapsed_ms={elapsed_ms} | "
-            f"body={e.response.text[:300]}"
+        logger.error(
+            "Extraction service returned HTTP %s — falling back to mock | document_id=%s | body=%s",
+            e.response.status_code,
+            document_id,
+            e.response.text[:300],
         )
-        logger.error(msg)
-        return _handle_failure(document_id, original_filename, msg)
+        return _mock(document_id, original_filename)
 
     except Exception as e:
-        elapsed_ms = round((time.perf_counter() - t0) * 1000, 1)
-        msg = (
-            f"Unexpected error calling extraction service | document_id={document_id} "
-            f"| elapsed_ms={elapsed_ms} | error={str(e)}"
+        logger.exception(
+            "Unexpected error calling extraction service — falling back to mock | document_id=%s | error=%s",
+            document_id,
+            str(e),
         )
-        logger.exception(msg)
-        return _handle_failure(document_id, original_filename, msg)
-
-
-def _handle_failure(
-    document_id: str, original_filename: str, error_message: str
-) -> ParsedBill:
-    """Handle an extraction failure based on strict mode."""
-    if settings.EXTRACTION_STRICT_MODE:
-        raise ExtractionServiceError(error_message)
-    logger.warning(
-        "Falling back to mock | document_id=%s | reason=%s",
-        document_id,
-        error_message,
-    )
-    return _mock(document_id, original_filename)
+        return _mock(document_id, original_filename)
 
 
 def _mock(document_id: str, original_filename: str) -> ParsedBill:

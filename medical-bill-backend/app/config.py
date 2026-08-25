@@ -15,6 +15,7 @@ class Settings(BaseSettings):
 
     # Pipeline settings
     PIPELINE_DELAY_SECONDS: float = 3.0
+    MOCK_PIPELINE: bool = True
 
     # Rust rules engine settings
     RULES_ENGINE_URL: str = "http://localhost:3001"
@@ -24,17 +25,7 @@ class Settings(BaseSettings):
     # Member 2 – Extraction + XGBoost scoring service
     EXTRACTION_SERVICE_URL: str = "http://localhost:8001"
     EXTRACTION_SERVICE_TIMEOUT_SECONDS: float = 30.0
-    EXTRACTION_SERVICE_ENABLED: bool = True
-    # When True, extraction failures raise instead of falling back to mock.
-    # Only safe in production when Member 2 is guaranteed available.
-    EXTRACTION_STRICT_MODE: bool = False
-
-    # Document text extraction / OCR
-    OCR_PROVIDER: str = "tesseract"  # "tesseract" | "textract" | "docai"
-    # Google Document AI settings (only used when OCR_PROVIDER=docai)
-    DOCAI_PROJECT_ID: str | None = None
-    DOCAI_LOCATION: str = "us"
-    DOCAI_PROCESSOR_ID: str | None = None
+    EXTRACTION_SERVICE_ENABLED: bool = False
 
     # LLM letter generation settings
     LLM_ENABLED: bool = True
@@ -44,15 +35,30 @@ class Settings(BaseSettings):
     LLM_TIMEOUT_SECONDS: float = 30.0
     LLM_MAX_RETRIES: int = 1
 
-    # Auth settings
-    AUTH_ENABLED: bool = True
-    # Static bearer token for simple API protection (dev-friendly).
-    # In production, set a strong random value or switch to JWT.
-    AUTH_TOKEN: str = "dev-token-change-me"
-    # Optional JWT settings (used when a JWT is presented as a bearer token)
-    JWT_SECRET: str = "change-me-too"
-    JWT_ALGORITHM: str = "HS256"
-    JWT_EXPIRES_MINUTES: int = 60 * 24  # 24 hours
+    # Authentication / session settings
+    # Opaque session tokens are hashed (SHA-256) before storage; only the hash is
+    # persisted. Tokens expire after this many hours.
+    AUTH_TOKEN_TTL_HOURS: int = 24
+    # Per-user fixed-window rate limit on uploads (requests per minute). In-process
+    # only; a multi-worker or multi-instance deployment needs a shared store (Redis).
+    UPLOAD_RATE_LIMIT_PER_MINUTE: int = 20
+
+    # CORS: an explicit allowlist of browser origins. A wildcard ("*") is invalid
+    # together with allow_credentials=True, so we never use one. Comma-separated.
+    CORS_ALLOWED_ORIGINS: str = (
+        "http://localhost:3000,http://localhost:5173,"
+        "http://localhost:8080,http://127.0.0.1:5500"
+    )
+
+    @property
+    def cors_origins_list(self) -> list[str]:
+        """Parsed, de-duplicated CORS origins (order preserved)."""
+        seen: dict[str, None] = {}
+        for origin in self.CORS_ALLOWED_ORIGINS.split(","):
+            cleaned = origin.strip()
+            if cleaned:
+                seen.setdefault(cleaned, None)
+        return list(seen)
 
 
 settings = Settings()

@@ -2,12 +2,11 @@
 CMS/AMA reference data (or a public/licensed proxy dataset).
 
 For offline operation without the full CMS datasets, we bundle a small curated
-proxy dataset of the most common codes. The service supports three modes:
+proxy dataset of the most common codes. The service supports two modes:
 
 1.  **Bundle** (default): a small built-in curated set of common codes.
-2.  **CMS files**: load full CMS CPT/HCPCS/ICD-10 files from `data/reference/`
-    if present (parquet/csv).
-3.  **Remote**: optional HTTP fetch from a configurable reference endpoint.
+2.  **CMS files**: overlay full CMS CPT/HCPCS/ICD-10/modifier CSVs from
+    `data/reference/` if present (see `_load_cms_files` for expected columns).
 """
 
 from __future__ import annotations
@@ -191,12 +190,15 @@ class ReferenceDataService:
             )
 
     def _load_cms_files(self) -> None:
-        """Load full CMS reference files if present. Supports CSV/parquet.
+        """Load full CMS reference files if present (CSV).
 
-        Expected formats (column names):
+        Expected columns:
           - cpt_hcpcs.csv:      code,description,long_description,status
           - icd10.csv:          code,description,long_description,status
           - modifiers.csv:      code,description,status
+
+        cpt_hcpcs.csv is split by first character (numeric CPT vs letter-prefixed
+        HCPCS); icd10.csv and modifiers.csv each load into a single map.
         """
         if not self.data_dir.exists():
             return
@@ -204,24 +206,39 @@ class ReferenceDataService:
         self._load_cms_csv(
             self.data_dir / "cpt_hcpcs.csv", self._cpt, self._hcpcs
         )
-        self._load_cms_csv(self.data_dir / "icd10.csv", self._icd10, None)
-        self._load_cms_csv(
-            self.data_dir / "modifiers.csv", self._modifiers, None
-        )
+        self._load_cms_csv(self.data_dir / "icd10.csv", self._icd10)
+        self._load_cms_csv(self.data_dir / "modifiers.csv", self._modifiers)
 
     def _load_cms_csv(
         self,
         path: Path,
-        numeric_map: Dict[str, CodeRecord],
-        alpha_map: Optional[Dict[str, CodeRecord]],
+        primary_map: Dict[str, CodeRecord],
+        alpha_map: Optional[Dict[str, CodeRecord]] = None,
     ) -> None:
+        """Load one CMS CSV into a target map.
+
+        For the combined CPT/HCPCS file, ``alpha_map`` receives letter-prefixed
+        HCPCS codes while ``primary_map`` receives numeric CPT codes. For
+        single-category files (ICD-10, modifiers) ``alpha_map`` is None and
+        EVERY row goes to ``primary_map`` — including letter-prefixed codes such
+        as ICD-10 'E11.9' or modifiers 'LT'/'RT'/'GA'.
+
+        Previously the alpha/numeric split ran even when ``alpha_map`` was None,
+        so letter-prefixed codes were routed to None and silently dropped. Since
+        every ICD-10 code begins with a letter, a full CMS ``icd10.csv`` loaded
+        ZERO codes. A file that exists but yields no usable rows now logs an
+        error instead of failing silently.
+        """
         if not path.exists():
             return
+        loaded = 0
         try:
             with open(path, newline="", encoding="utf-8-sig") as f:
                 reader = csv.DictReader(f)
                 for row in reader:
                     code = row.get("code", "").strip()
+                    if not code:
+                        continue
                     desc = row.get("description", row.get("long_description", "")).strip()
                     status = row.get("status", "active").strip().lower()
                     is_active = status not in ("deprecated", "retired", "inactive")
@@ -232,11 +249,22 @@ class ReferenceDataService:
                         is_deprecated=not is_active,
                         source=str(path.name),
                     )
-                    target = alpha_map if code[0].isalpha() else numeric_map
-                    if target is not None:
-                        target[code] = rec
+                    if alpha_map is not None and code[0].isalpha():
+                        alpha_map[code] = rec
+                    else:
+                        primary_map[code] = rec
+                    loaded += 1
         except Exception as exc:  # pragma: no cover - defensive
             logger.warning("Failed to load reference file %s: %s", path, exc)
+            return
+        if loaded == 0:
+            logger.error(
+                "Reference file %s exists but produced 0 usable codes — check it "
+                "has a 'code' header column and at least one data row.",
+                path,
+            )
+        else:
+            logger.info("Loaded %d codes from %s", loaded, path.name)
 
     # --- Querying ----------------------------------------------------------
     def _normalize(self, code: str) -> str:

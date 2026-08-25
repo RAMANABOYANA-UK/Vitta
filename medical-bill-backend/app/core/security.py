@@ -1,26 +1,27 @@
 """
 Security utilities for the medical bill platform.
 
-Provides:
-- Storage key generation, filename sanitization
-- Bearer-token auth supporting both static AUTH_TOKEN and JWT
-- JWT create/decode helpers
-"""
+Provides storage-key/filename helpers plus password hashing and opaque
+session-token helpers. Everything here is standard-library only (no external
+crypto dependency) so it is portable and unit-testable in isolation.
 
+Password hashing uses PBKDF2-HMAC-SHA256 with a per-password random salt, encoded
+as a single self-describing string: ``pbkdf2_sha256$<iterations>$<salt_b64>$<hash_b64>``.
+Session tokens are random, url-safe, and never stored in the clear — only their
+SHA-256 hash is persisted, so a leaked database cannot be used to mint sessions.
+"""
+import base64
+import hashlib
+import hmac
 import secrets
 import uuid
-from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from typing import Optional
 
-from fastapi import Depends, HTTPException, status
-from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
-
-from app.config import settings
-
-# ---------------------------------------------------------------------------
-# Storage helpers
-# ---------------------------------------------------------------------------
+# PBKDF2 work factor. OWASP's 2023 guidance for PBKDF2-HMAC-SHA256 is >= 600,000
+# iterations. Kept here (not in settings) so the crypto layer has no config
+# dependency and stays trivially testable; callers may override per-call.
+DEFAULT_PBKDF2_ITERATIONS = 600_000
+_PBKDF2_ALGORITHM = "pbkdf2_sha256"
 
 
 def generate_storage_key(original_filename: str) -> str:
@@ -45,76 +46,61 @@ def sanitize_filename(filename: str) -> str:
 
 
 # ---------------------------------------------------------------------------
-# Auth
+# Password hashing (PBKDF2-HMAC-SHA256)
 # ---------------------------------------------------------------------------
+def hash_password(password: str, *, iterations: int = DEFAULT_PBKDF2_ITERATIONS) -> str:
+    """Hash a password into a self-describing ``pbkdf2_sha256$...`` string.
 
-_bearer_scheme = HTTPBearer(auto_error=False)
-
-
-def verify_bearer_token(
-    credentials: Optional[HTTPAuthorizationCredentials] = Depends(_bearer_scheme),
-) -> None:
+    A fresh 16-byte random salt is generated per call, so hashing the same
+    password twice yields different encodings.
     """
-    Verify the bearer token on protected endpoints.
+    if not password:
+        raise ValueError("password must be a non-empty string")
+    salt = secrets.token_bytes(16)
+    derived = hashlib.pbkdf2_hmac("sha256", password.encode("utf-8"), salt, iterations)
+    return "{}${}${}${}".format(
+        _PBKDF2_ALGORITHM,
+        iterations,
+        base64.b64encode(salt).decode("ascii"),
+        base64.b64encode(derived).decode("ascii"),
+    )
 
-    When AUTH_ENABLED=false, this dependency is a no-op (dev mode).
-    When AUTH_ENABLED=true, requests must include:
-        Authorization: Bearer <AUTH_TOKEN>
-        -or-
-        Authorization: Bearer <JWT>
 
-    JWT tokens are issued via POST /api/v1/auth/token.
+def verify_password(password: str, encoded: str) -> bool:
+    """Verify a password against a ``pbkdf2_sha256$...`` encoding.
+
+    Uses a constant-time comparison and never raises on malformed input
+    (returns False instead), so callers can treat it as a pure predicate.
     """
-    if not settings.AUTH_ENABLED:
-        return
-
-    if credentials is None:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Not authenticated",
-            headers={"WWW-Authenticate": "Bearer"},
-        )
-
-    token = credentials.credentials
-
-    # 1) Static dev token
-    if secrets.compare_digest(token, settings.AUTH_TOKEN):
-        return
-
-    # 2) JWT
     try:
-        decode_jwt_token(token)
-        return
-    except Exception:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid or expired token",
-            headers={"WWW-Authenticate": "Bearer"},
-        )
+        algorithm, iter_str, salt_b64, hash_b64 = encoded.split("$")
+        if algorithm != _PBKDF2_ALGORITHM:
+            return False
+        iterations = int(iter_str)
+        salt = base64.b64decode(salt_b64)
+        expected = base64.b64decode(hash_b64)
+    except (ValueError, TypeError, AttributeError):
+        return False
+    derived = hashlib.pbkdf2_hmac("sha256", password.encode("utf-8"), salt, iterations)
+    return hmac.compare_digest(derived, expected)
 
 
 # ---------------------------------------------------------------------------
-# JWT helpers
+# Opaque session tokens
 # ---------------------------------------------------------------------------
+def generate_session_token(length: int = 32) -> str:
+    """Return a fresh, url-safe opaque session token.
+
+    This is the only time the raw token exists; it is handed to the client once
+    and never stored server-side (see :func:`hash_token`).
+    """
+    return secrets.token_urlsafe(length)
 
 
-def create_jwt_token(subject: str, expires_minutes: Optional[int] = None) -> str:
-    """Create a JWT token (requires PyJWT installed)."""
-    import jwt
+def hash_token(token: str) -> str:
+    """Return the SHA-256 hex digest of a session token.
 
-    secret = settings.JWT_SECRET or settings.AUTH_TOKEN
-    expires = expires_minutes or settings.JWT_EXPIRES_MINUTES
-    payload = {
-        "sub": subject,
-        "iat": datetime.now(timezone.utc),
-        "exp": datetime.now(timezone.utc) + timedelta(minutes=expires),
-    }
-    return jwt.encode(payload, secret, algorithm=settings.JWT_ALGORITHM)
-
-
-def decode_jwt_token(token: str) -> dict:
-    """Decode and validate a JWT token (requires PyJWT installed)."""
-    import jwt
-
-    secret = settings.JWT_SECRET or settings.AUTH_TOKEN
-    return jwt.decode(token, secret, algorithms=[settings.JWT_ALGORITHM])
+    Only this digest is persisted. Lookups hash the presented bearer token and
+    match on the digest, so the database never holds a usable credential.
+    """
+    return hashlib.sha256(token.encode("utf-8")).hexdigest()

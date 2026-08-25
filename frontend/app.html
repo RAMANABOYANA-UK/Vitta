@@ -121,6 +121,20 @@
 
       <main class="app-content">
 
+        <!-- Degraded-mode banner: shown when the pipeline ran on synthesized
+             sample data (extractionMode === "sample") rather than reading the
+             uploaded file. Honest disclosure so no one mistakes the figures
+             below for their real bill. Toggled by renderSampleDataBanner(). -->
+        <div class="sample-data-banner" id="sampleDataBanner" hidden role="alert">
+          <span class="sdb-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+          </span>
+          <div>
+            <strong>Sample data — not your uploaded bill.</strong>
+            <span id="sampleDataBannerText">Document extraction is running in demo mode, so the figures, codes, and flags below are synthesized example data, not the contents of your file. Do not rely on these numbers for a real appeal.</span>
+          </div>
+        </div>
+
         <!-- ============ WELCOME / UPLOAD ============ -->
         <section class="page-section active" id="page-welcome">
           <div class="welcome-hero">
@@ -134,7 +148,7 @@
 
           <!-- Upload zone -->
           <div class="upload-zone" id="uploadZone" role="button" tabindex="0" aria-label="Upload a bill or EOB">
-            <input type="file" class="file-input" id="fileInput" accept=".pdf,.png,.jpg,.jpeg,.webp" />
+            <input type="file" class="file-input" id="fileInput" accept=".pdf,.png,.jpg,.jpeg,.webp,application/pdf,image/png,image/jpeg,image/webp" />
             <div class="upload-icon">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
             </div>
@@ -149,7 +163,7 @@
           </div>
 
           <!-- Upload error state (inline) -->
-          <div class="upload-error" id="uploadError" hidden>
+          <div class="upload-error" id="uploadError" hidden role="alert" aria-live="assertive">
             <span class="ue-icon">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 9v4M12 17h.01"/><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/></svg>
             </span>
@@ -166,7 +180,7 @@
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
               Take a photo with camera
             </button>
-            <input type="file" class="file-input" id="cameraInput" accept="image/*" capture="environment" />
+            <input type="file" class="file-input" id="cameraInput" accept="image/png,image/jpeg,image/webp" capture="environment" />
           </div>
 
           <div style="margin-top:32px;">
@@ -221,7 +235,7 @@
               </div>
             </div>
             <h3 id="scanTitle">Uploading your bill…</h3>
-            <p id="scanSub">The pipeline runs multiple AI services. Stages complete independently — results stream in as they land.</p>
+            <p id="scanSub" aria-live="polite" aria-atomic="true">The pipeline runs multiple AI services. Stages complete independently — results stream in as they land.</p>
 
             <!-- Stage list (per-stage status) -->
             <div class="scan-steps" id="scanStages">
@@ -705,9 +719,21 @@
                     <span id="letterFooterHint">Auto-saved · Draft #1</span>
                   </span>
                   <div class="letter-actions">
+                    <a href="#" class="btn btn-secondary btn-sm" id="saveLetterBtn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg> Save &amp; re-verify</a>
                     <a href="#" class="btn btn-secondary btn-sm" id="shareLetterBtn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8"/><polyline points="16 6 12 2 8 6"/><line x1="12" y1="2" x2="12" y2="15"/></svg> Share</a>
                     <a href="#" class="btn btn-primary btn-sm" id="sendLetterBtn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg> Mark as sent</a>
                   </div>
+                </div>
+
+                <!-- Letter verification status: reflects the backend's real,
+                     fact-checked pass over the current letter text (populated by
+                     renderLetterVerification after a save/re-verify). -->
+                <div class="letter-verify" id="letterVerifyStatus" hidden>
+                  <div class="lv-head">
+                    <span class="lv-icon" id="letterVerifyIcon"></span>
+                    <strong id="letterVerifyTitle"></strong>
+                  </div>
+                  <ul class="lv-problems" id="letterVerifyProblems" hidden></ul>
                 </div>
               </div>
             </div>
@@ -844,7 +870,7 @@
                 </div>
               </div>
               <div style="display: flex; gap: 12px;">
-                <button class="btn btn-secondary btn-sm" onclick="window.location.href='login.html';" style="background: rgba(255,255,255,0.1); color: #fff; border: 1px solid rgba(255,255,255,0.2);">Sign Out</button>
+                <button class="btn btn-secondary btn-sm" onclick="vittaLogout()" style="background: rgba(255,255,255,0.1); color: #fff; border: 1px solid rgba(255,255,255,0.2);">Sign Out</button>
                 <button class="btn btn-primary btn-sm" onclick="showToast('Profile changes saved successfully!')">Save Profile</button>
               </div>
             </div>
