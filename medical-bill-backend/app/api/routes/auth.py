@@ -19,6 +19,7 @@ from sqlmodel.ext.asyncio.session import AsyncSession
 from app.config import settings
 from app.core.auth import _extract_bearer_token, get_current_user
 from app.core.security import (
+    generate_secure_token,
     generate_session_token,
     hash_password,
     hash_token,
@@ -26,7 +27,15 @@ from app.core.security import (
 )
 from app.database import get_session
 from app.models import User, UserSession
-from app.schemas import LoginRequest, TokenResponse, UserCreate, UserRead
+from app.schemas import (
+    EmailVerificationRequest,
+    EmailVerificationStatus,
+    LoginRequest,
+    TokenResponse,
+    UserCreate,
+    UserRead,
+)
+from app.services.mailer import send_verification_email
 
 logger = logging.getLogger(__name__)
 
@@ -66,6 +75,28 @@ async def _issue_session(session: AsyncSession, user: User) -> tuple[str, dateti
     return raw_token, expires_at
 
 
+def _issue_verification_token(user: User) -> str | None:
+    """Arm ``user`` for email verification and return the raw one-time token
+    (to be emailed) — or None when verification is disabled. When enabled the
+    account is NOT marked verified until the token is redeemed."""
+    raw_token = generate_secure_token(32)
+    user.email_verified = False
+    user.email_verification_token_hash = hash_token(raw_token)
+    user.email_verification_expires_at = datetime.now(timezone.utc) + timedelta(
+        hours=settings.EMAIL_VERIFICATION_TTL_HOURS
+    )
+    return raw_token
+
+
+def _email_verified(user: User) -> bool:
+    """Whether ``user`` can log in: profile active AND (if required) verified."""
+    if not user.is_active:
+        return False
+    if settings.EMAIL_VERIFICATION_REQUIRED and not user.email_verified:
+        return False
+    return True
+
+
 def _token_response(user: User, raw_token: str, expires_at: datetime) -> TokenResponse:
     return TokenResponse(
         access_token=raw_token,
@@ -98,6 +129,13 @@ async def register(
         )
 
     user = User(email=payload.email, password_hash=hash_password(payload.password))
+    # Arm email verification (unless disabled). When enabled the user is NOT
+    # verified yet and must redeem the emailed token before logging in.
+    if settings.EMAIL_VERIFICATION_REQUIRED:
+        verify_token = _issue_verification_token(user)
+    else:
+        user.email_verified = True
+        verify_token = None
     session.add(user)
     try:
         await session.commit()
@@ -109,6 +147,9 @@ async def register(
             detail="An account with this email already exists",
         )
     await session.refresh(user)
+
+    if verify_token:
+        send_verification_email(user.email, verify_token)
 
     raw_token, expires_at = await _issue_session(session, user)
     logger.info("auth.register success user_id=%s", user.id)
@@ -140,6 +181,14 @@ async def login(
     if not password_ok or not user.is_active:
         logger.warning("auth.login failed user_id=%s active=%s", user.id, user.is_active)
         raise _invalid_credentials()
+
+    if settings.EMAIL_VERIFICATION_REQUIRED and not user.email_verified:
+        # Distinct error so the client can show a "please verify your email"
+        # screen without revealing anything about the account (email was valid).
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="email_not_verified",
+        )
 
     raw_token, expires_at = await _issue_session(session, user)
     logger.info("auth.login success user_id=%s", user.id)
@@ -180,5 +229,96 @@ async def read_me(current_user: User = Depends(get_current_user)) -> UserRead:
     return UserRead(
         id=current_user.id,
         email=current_user.email,
+        email_verified=current_user.email_verified,
         created_at=current_user.created_at,
     )
+
+
+@router.post(
+    "/logout-everywhere",
+    status_code=status.HTTP_204_NO_CONTENT,
+    summary="Revoke every session for the current user",
+)
+async def logout_everywhere(
+    current_user: User = Depends(get_current_user),
+    session: AsyncSession = Depends(get_session),
+) -> Response:
+    """Delete every session token belonging to the current user (logout on all
+    devices). Revocation is durable: afterwards no issued bearer token for this
+    user is valid."""
+    result = await session.exec(
+        select(UserSession).where(UserSession.user_id == current_user.id)
+    )
+    revoke: list[UserSession] = list(result.all())
+    n = 0
+    for us in revoke:
+        await session.delete(us)
+        n += 1
+    await session.commit()
+    logger.info("auth.logout_everywhere user_id=%s revoked=%d", current_user.id, n)
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@router.post(
+    "/verify-email",
+    response_model=EmailVerificationStatus,
+    summary="Redeem a one-time email verification token",
+)
+async def verify_email(
+    payload: EmailVerificationRequest,
+    session: AsyncSession = Depends(get_session),
+) -> EmailVerificationStatus:
+    """Confirm an account's email by redeeming the one-time token. Idempotent;
+    an unknown/expired/already-redeemed token returns 400 with a uniform detail."""
+    token_hash = hash_token(payload.token)
+    result = await session.exec(
+        select(User).where(User.email_verification_token_hash == token_hash)
+    )
+    user = result.first()
+    if user is None:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid or already-used verification token",
+        )
+    now = datetime.now(timezone.utc)
+    expires_at = user.email_verification_expires_at
+    if expires_at is not None and expires_at.tzinfo is None:
+        expires_at = expires_at.replace(tzinfo=timezone.utc)
+    if expires_at is None or expires_at < now:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid or already-used verification token",
+        )
+
+    user.email_verified = True
+    user.email_verification_token_hash = None
+    user.email_verification_expires_at = None
+    session.add(user)
+    await session.commit()
+    logger.info("auth.verify_email success user_id=%s", user.id)
+    return EmailVerificationStatus(email=user.email, email_verified=True)
+
+
+@router.post(
+    "/resend-verification",
+    status_code=status.HTTP_202_ACCEPTED,
+    summary="Issue a fresh email-verification token for the current user",
+)
+async def resend_verification(
+    current_user: User = Depends(get_current_user),
+    session: AsyncSession = Depends(get_session),
+) -> dict:
+    """Re-arm and re-send a verification email for the current user. Only
+    meaningful when EMAIL_VERIFICATION_REQUIRED (the account is not yet
+    verified); returns 409 if there is nothing to verify."""
+    if current_user.email_verified:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Email is already verified",
+        )
+    raw_token = _issue_verification_token(current_user)
+    session.add(current_user)
+    await session.commit()
+    send_verification_email(current_user.email, raw_token)
+    logger.info("auth.resend_verification user_id=%s", current_user.id)
+    return {"email": current_user.email, "email_verified": False}

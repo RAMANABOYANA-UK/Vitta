@@ -43,6 +43,16 @@ class Settings(BaseSettings):
     # only; a multi-worker or multi-instance deployment needs a shared store (Redis).
     UPLOAD_RATE_LIMIT_PER_MINUTE: int = 20
 
+    # Email verification — required step toward the full PHI gate.
+    # When True, a freshly-registered account is NOT considered verified until its
+    # email is confirmed (login is refused with a "email_not_verified" 403), and the
+    # verify/resend endpoints become load-bearing. Default False keeps the existing
+    # dev/demo registration flow working unchanged; flip it (and supply a real email
+    # sender) before touching real patient data.
+    EMAIL_VERIFICATION_REQUIRED: bool = False
+    # How long a verification token is valid.
+    EMAIL_VERIFICATION_TTL_HOURS: int = 24
+
     # Ingestion / OCR.
     # Default False on purpose: the ingestion path only ever claims to have read a
     # real document when it actually did. A text-layer PDF needs no OCR; image and

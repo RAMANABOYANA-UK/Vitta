@@ -22,6 +22,14 @@ class User(SQLModel, table=True):
     # PBKDF2 encoding produced by app.core.security.hash_password — never a raw password.
     password_hash: str
     is_active: bool = Field(default=True)
+    # Email verification: a token (self-describing "verify-<raw>") is hashed like a
+    # session token. This is a required step toward the full PHI gate; see
+    # EMAIL_VERIFICATION_REQUIRED. When enabled, login is refused until verified.
+    email_verified: bool = Field(default=False)
+    email_verification_token_hash: Optional[str] = Field(default=None, index=True)
+    email_verification_expires_at: Optional[datetime] = Field(
+        sa_column=Column(DateTime(timezone=True))
+    )
     created_at: datetime = Field(
         sa_column=Column(DateTime(timezone=True), server_default=func.now())
     )

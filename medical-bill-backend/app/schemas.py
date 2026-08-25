@@ -177,7 +177,21 @@ class LoginRequest(BaseModel):
 class UserRead(BaseModel):
     id: str
     email: str
+    email_verified: bool = False
     created_at: datetime
+
+
+class EmailVerificationRequest(BaseModel):
+    """Body for POST /auth/verify-email — the one-time token from the email."""
+
+    token: str = Field(min_length=1, max_length=256)
+
+
+class EmailVerificationStatus(BaseModel):
+    """Response for POST /auth/verify-email."""
+
+    email: str
+    email_verified: bool = True
 
 
 class TokenResponse(BaseModel):
