@@ -127,6 +127,18 @@ class LetterUpdateRequest(BaseModel):
     )
 
 
+class LetterEmailRequest(BaseModel):
+    """Body for POST /bills/{id}/letter/email — where to send the verified letter."""
+
+    email: str
+    subject: str | None = Field(default=None, max_length=200)
+
+    @field_validator("email")
+    @classmethod
+    def _validate_email(cls, v: str) -> str:
+        return _normalize_email(v)
+
+
 class HealthResponse(BaseModel):
     status: str
     service: str

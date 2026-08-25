@@ -44,3 +44,19 @@ def send_verification_email(email: str, token: str) -> None:
         email,
         url,
     )
+
+
+def send_appeal_letter_email(email: str, subject: str, letter_markdown: str) -> None:
+    """Deliver (or, in dev/absent-provider, log) an appeal letter.
+
+    Mirrors the verification sender: real PHI deployments swap this for a
+    transactional provider. The letter is never logged (it is PHI); only the
+    recipient and subject are.
+    """
+    logger.info(
+        "email.appeal_letter queued | to=%s | subject=%.120s | body_chars=%d "
+        "(dev-delivery: no SMTP provider wired)",
+        email,
+        subject,
+        len(letter_markdown or ""),
+    )
