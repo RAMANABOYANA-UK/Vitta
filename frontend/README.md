@@ -40,7 +40,10 @@ The frontend expects the backend API to be running on `http://localhost:8000`
 (configure via the `VITTA_API_URL` query parameter or the `VITTA_API_MODE`
 global, see `js/api.js`).
 
-Authentication uses a bearer token:
+Authentication uses an opaque bearer token obtained from the backend
+(`POST /api/v1/auth/register` or `/login`), stored in `localStorage` by the
+login page, and sent automatically as `Authorization: Bearer <token>`:
+
 ```
-Authorization: Bearer dev-token-change-me
+Authorization: Bearer <access_token>
 ```

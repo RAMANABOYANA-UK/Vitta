@@ -12,7 +12,7 @@ Help patients and advocates understand medical bills, catch overcharges, and tak
 
 ## What Vitta Does
 
-1. **Ingests** medical bills and EOBs (photo, PDF, or text)
+1. **Ingests** medical bills (text-layer PDFs today; images & scanned PDFs once OCR is configured — see Current Status below)
 2. **Extracts** line items, CPT/HCPCS codes, ICD-10 codes, amounts, and denial reasons
 3. **Validates** codes and reconciles amounts
 4. **Detects errors** such as duplicates, unbundling, math mistakes, and price anomalies
@@ -21,13 +21,32 @@ Help patients and advocates understand medical bills, catch overcharges, and tak
 7. **Generates** a grounded appeal letter that only uses verified claim facts
 8. **Verifies** the letter programmatically before the user sees it
 
+## Current Status
+
+This codebase is under active development and is **not yet ready for real,
+un-de-identified patient bills.** The layered architecture (deterministic rules +
+ML scoring + grounded, verified letter generation) and the Auth/PHI gate
+(opaque revocable tokens, per-document ownership, audit trail) are in place and
+test-passing, but several production-gating pieces are still pending:
+
+- **Images & scanned PDFs** require a configured OCR provider (`OCR_ENABLED`);
+  until then those uploads fail honestly (they are not silently fabricated).
+- **Pricing benchmarks & model training** currently use synthetic data; the
+  reported accuracy/AUC are train/test numbers on that synthetic distribution,
+  **not** real-claim performance.
+- **Email delivery** is a dev-safe "log instead of send" boundary until a real
+  transactional/SMTP sender is wired.
+- Real-bill collection, model retraining on real labels, and a durable
+  distributed rate limit are future work.
+
 ## System Architecture
 
 ```
-Upload (photo / PDF / text)
+Upload (PDF with text layer today; images/scanned PDFs once OCR is configured)
         ↓
 Document Understanding & Extraction
-  - Layout-aware OCR
+  - Text extraction from the PDF text layer (pypdf)
+  - Image / scanned-PDF OCR (behind the OCR_ENABLED flag)
   - Structured extraction of codes, amounts, and entities
   - Code validation (CPT / ICD-10)
   - Amount reconciliation

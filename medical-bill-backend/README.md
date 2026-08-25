@@ -154,7 +154,7 @@ source venv/bin/activate          # Windows: venv\Scripts\activate
 pip install -r requirements.txt
 cp .env.example .env
 # set EXTRACTION_SERVICE_ENABLED=true (default in .env.example)
-# set AUTH_TOKEN=dev-token-change-me (default)
+# set AUTH_TOKEN_TTL_HOURS=24 (default) — see Authentication below
 uvicorn app.main:app --reload --port 8000
 ```
 
@@ -165,36 +165,53 @@ The API will be available at:
 
 ## Authentication
 
-All protected endpoints accept a bearer token:
+All protected endpoints are authenticated with an **opaque bearer token** issued
+by the auth endpoints. Tokens are revocable and server-side — only the SHA-256
+hash of each token is stored, and they expire after `AUTH_TOKEN_TTL_HOURS`.
+
+1. Register (or log in) to receive a token:
 
 ```bash
-# Static dev token (from .env AUTH_TOKEN)
-curl -H "Authorization: Bearer dev-token-change-me" \
-  http://localhost:8000/api/v1/documents/{id}
+# Register
+curl -X POST http://localhost:8000/api/v1/auth/register \
+  -H "Content-Type: application/json" \
+  -d '{"email":"you@example.com","password":"s3cure-password!"}'
 ```
 
-or a JWT issued by the token endpoint:
+```bash
+# Login
+curl -X POST http://localhost:8000/api/v1/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{"email":"you@example.com","password":"s3cure-password!"}'
+```
+
+Both return `{ "access_token": "...", "expires_at": "...", "user": {...} }`.
+
+2. Send it on protected requests:
 
 ```bash
-# Issue a JWT
-curl -X POST http://localhost:8000/api/v1/auth/token \
-  -H "Content-Type: application/json" \
-  -d '{"username":"demo","password":"demo123"}'
-
-# Use the returned access_token
 curl -H "Authorization: Bearer <access_token>" \
   http://localhost:8000/api/v1/documents/{id}
 ```
 
-Dev users: `demo/demo123`, `admin/admin123`.
-
-To disable auth entirely (dev only), set `AUTH_ENABLED=false` in `.env`.
-
-To generate a strong production token:
+3. Revoke tokens when done:
 
 ```bash
-python -c "import secrets; print(secrets.token_urlsafe(48))"
+# Revoke just this token
+curl -X POST -H "Authorization: Bearer <access_token>" \
+  http://localhost:8000/api/v1/auth/logout
+# Revoke every session for this user
+curl -X POST -H "Authorization: Bearer <access_token>" \
+  http://localhost:8000/api/v1/auth/logout-everywhere
 ```
+
+There is **no static/shared token and no runtime "disable auth" toggle** —
+enforcement is always on for protected routes. Every document is scoped to its
+owner: requests for another user's document return 404 (never 403), so callers
+cannot probe for the existence of other users' documents.
+
+When `EMAIL_VERIFICATION_REQUIRED=true`, accounts must confirm their email
+(via the emailed one-time token) before they can log in.
 
 ## API Endpoints
 
@@ -202,7 +219,11 @@ python -c "import secrets; print(secrets.token_urlsafe(48))"
 |--------|-----------------------------------|------------------------------------------------|------|
 | GET    | `/`                               | API info                                       | No   |
 | GET    | `/health`                         | Health check with dependency status            | No   |
-| POST   | `/api/v1/auth/token`              | Issue a JWT bearer token                       | No   |
+| POST   | `/api/v1/auth/register`           | Create account + receive an opaque token       | No   |
+| POST   | `/api/v1/auth/login`              | Exchange credentials for a token               | No   |
+| POST   | `/api/v1/auth/logout`             | Revoke the presented token                     | Yes  |
+| POST   | `/api/v1/auth/logout-everywhere`  | Revoke every token for the user                | Yes  |
+| GET    | `/api/v1/auth/me`                 | Return the authenticated user                  | Yes  |
 | POST   | `/api/v1/documents/upload`        | Upload a medical bill (PDF/image)              | Yes  |
 | GET    | `/api/v1/documents/{id}`          | Get document + analysis result                 | Yes  |
 | GET    | `/api/v1/documents/{id}/status`   | Get document processing status                 | Yes  |
@@ -212,8 +233,9 @@ python -c "import secrets; print(secrets.token_urlsafe(48))"
 ### Uploading a document
 
 ```bash
+# Obtain a token first (see Authentication), then:
 curl -X POST http://localhost:8000/api/v1/documents/upload \
-  -H "Authorization: Bearer dev-token-change-me" \
+  -H "Authorization: Bearer <access_token>" \
   -F "file=@/path/to/bill.pdf"
 ```
 
@@ -235,7 +257,7 @@ Response (201 Created):
 ### Checking status
 
 ```bash
-curl -H "Authorization: Bearer dev-token-change-me" \
+curl -H "Authorization: Bearer <access_token>" \
   http://localhost:8000/api/v1/documents/{id}/status
 ```
 
@@ -244,7 +266,7 @@ Status flow: `uploaded → processing → analyzed → letter_ready` (or `error`
 ### Getting the full result
 
 ```bash
-curl -H "Authorization: Bearer dev-token-change-me" \
+curl -H "Authorization: Bearer <access_token>" \
   http://localhost:8000/api/v1/documents/{id}
 ```
 
@@ -252,26 +274,28 @@ After processing completes, the response includes the full `result` object with 
 
 ## Document Text Extraction
 
-When a PDF or image is uploaded, the backend extracts real text before sending it to Member 2:
+When a PDF is uploaded, the backend extracts real text from the embedded text
+layer with `pypdf` (no external service) and sends it to Member 2, recording the
+extraction method (`pdf_text`) in the audit trail.
 
-- **PDFs**: embedded text is extracted via `pypdf` (no external services)
-- **Images**: OCR via `pytesseract` (local, default), AWS Textract, or Google Document AI
-
-Configure via `.env`:
+Images and scanned (text-less) PDFs require an OCR provider (pytesseract +
+tesseract binary). This is gated behind `OCR_ENABLED`:
 
 ```env
-# "tesseract" (local), "textract" (AWS), or "docai" (Google)
-OCR_PROVIDER=tesseract
+OCR_ENABLED=false
 ```
 
-If text extraction fails (e.g., scanned PDF with no embedded text and no OCR available), the pipeline gracefully passes a clear placeholder to Member 2 and records the failure in the audit trail.
+When `OCR_ENABLED=false` (the default, because no OCR provider ships with this
+repo), an image or scanned-PDF upload fails with a **clear, honest error** ("OCR
+is not configured") rather than silently fabricating text. Set `OCR_ENABLED=true`
+only after installing a working OCR provider.
 
 ## Recovery
 
 If a document is stuck in `processing` or ends in `error`:
 
 ```bash
-curl -X POST -H "Authorization: Bearer dev-token-change-me" \
+curl -X POST -H "Authorization: Bearer <access_token>" \
   http://localhost:8000/api/v1/documents/{id}/reprocess
 ```
 
@@ -418,7 +442,7 @@ The `ParsedBill` schema is the single shared contract between the backend, front
 - Status transitions are validated against `_ALLOWED_TRANSITIONS` — no hardcoded status strings.
 - The error path always commits a terminal `error` status via a fresh session.
 - Real document text is extracted (PDF/OCR) before being sent to Member 2.
-- All document endpoints require bearer-token auth (configurable via `AUTH_ENABLED`).
+- All document endpoints require bearer-token auth (always enforced — see Authentication).
 
 ## Troubleshooting
 
@@ -430,12 +454,12 @@ The `ParsedBill` schema is the single shared contract between the backend, front
 
 **Document stuck in `processing`** → Use the recovery endpoint:
 ```bash
-curl -X POST -H "Authorization: Bearer dev-token-change-me" \
+curl -X POST -H "Authorization: Bearer <access_token>" \
   http://localhost:8000/api/v1/documents/{id}/reprocess
 ```
 
 **Rules engine unreachable** → The backend continues without deterministic flags (graceful degradation). Check `GET /health` for the rules engine status.
 
-**OCR not working** → Install Tesseract OCR binary (https://github.com/UB-Mannheim/tesseract/wiki) and ensure `pytesseract` + `Pillow` are installed. Or switch `OCR_PROVIDER` to `textract`/`docai`.
+**OCR not working** → Install a Tesseract OCR binary (e.g. the UB-Mannheim build) and ensure `pytesseract` + `Pillow` are installed, then set `OCR_ENABLED=true`.
 
-**401 Unauthorized** → Your bearer token doesn't match `AUTH_TOKEN` in `.env`. Set `AUTH_ENABLED=false` to disable auth in dev.
+**401 Unauthorized** → Your bearer token is missing, invalid, or expired. Register/login to obtain a fresh one (see Authentication); tokens are opaque and expire after `AUTH_TOKEN_TTL_HOURS`.
