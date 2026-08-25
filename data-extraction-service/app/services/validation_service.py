@@ -293,6 +293,81 @@ class ValidationService:
                     line.icd10_confidence.verified = status == VerificationStatus.VERIFIED
                     line.icd10_confidence.verification_status = status
 
+    # ------------------------------------------------------------------
+    # Modifier appropriateness (P4 #21) — existence is already checked; this
+    # adds an appropriateness guard so a *valid* modifier used wrongly is
+    # flagged. Curated and deliberately conservative: it only raises a LOW
+    # warning when the modifier is clearly misapplied to the line's CPT/HCPCS
+    # code, and never invents a rule for combinations outside the table.
+    # ------------------------------------------------------------------
+
+    # Modifiers that must only appear with an Evaluation & Management code
+    # (992xx–994xx). "25" signifies a significant, separately identifiable E/M.
+    _MODIFIER_REQ_EM: Dict[str, str] = {
+        "25": "Significant, separately identifiable E/M service",
+    }
+
+    # Modifiers that only make sense for imaging / lab / pathology services
+    # (professional & technical components).
+    _MODIFIER_COMPONENT: Dict[str, str] = {
+        "26": "Professional component",
+        "TC": "Technical component",
+    }
+
+    # Side modifiers (left/right) — only for procedures on paired/bilateral organs.
+    _MODIFIER_SIDE: Dict[str, str] = {
+        "LT": "Left side",
+        "RT": "Right side",
+    }
+
+    def _modifier_appropriateness_note(
+        self, code: str, cpt: str
+    ) -> Optional[str]:
+        """Return a human explanation if `code` is inappropriate for `cpt`, else
+        None. Conservative: applies only to the curated table above and never
+        fires on a CPT code it cannot interpret (i.e. one not present in the
+        reference dataset)."""
+        rec = self.ref_data.lookup_cpt_hcpcs(cpt)
+        if rec is None:
+            return None
+        # CPT E/M ranges: 99202–99499 (992xx evaluation & management,
+        # 993xx–994xx preventive/management). These are the codes the "25"
+        # modifier and side modifiers pair with / never pair with.
+        is_em = cpt.startswith("992") or cpt.startswith("993") or cpt.startswith("994")
+
+        if code in self._MODIFIER_REQ_EM and not is_em:
+            return (
+                f"Modifier {code} ({self._MODIFIER_REQ_EM[code]}) is only valid "
+                f"with an Evaluation & Management code, but this line is CPT {cpt}."
+            )
+
+        if code in self._MODIFIER_COMPONENT:
+            desc = (rec.description or "").lower()
+            is_imaging = any(
+                kw in desc
+                for kw in (
+                    "x-ray",
+                    "mri",
+                    "ct ",
+                    "ultrasound",
+                    "echocardiogram",
+                    "patholog",
+                    "laboratory",
+                )
+            )
+            if not is_imaging:
+                return (
+                    f"Modifier {code} ({self._MODIFIER_COMPONENT[code]}) is only "
+                    f"appropriate for imaging/lab/pathology services, not CPT {cpt}."
+                )
+
+        if code in self._MODIFIER_SIDE and is_em:
+            return (
+                f"Modifier {code} ({self._MODIFIER_SIDE[code]}) is inappropriate "
+                f"for an E/M service (CPT {cpt})."
+            )
+        return None
+
     def _validate_modifiers(
         self, line: LineItem, warnings: List[ExtractionWarning]
     ) -> None:
@@ -336,6 +411,18 @@ class ValidationService:
                         notes=["Modifier verified against reference dataset"],
                     )
                 )
+                # Appropriateness (P4 #21): a valid modifier used wrongly.
+                cpt = (line.cpt_hcpcs or "").strip().upper()
+                if cpt:
+                    note = self._modifier_appropriateness_note(code, cpt)
+                    if note:
+                        self._add_warning(
+                            warnings,
+                            code="MODIFIER_INAPPROPRIATE",
+                            severity=WarningSeverity.LOW,
+                            message=f"Line {line.id}: {note}",
+                            field="modifiers",
+                        )
 
     def _validate_line_amounts(
         self, line: LineItem, warnings: List[ExtractionWarning]

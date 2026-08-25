@@ -274,3 +274,45 @@ class TestReconcileAmountsHelper:
         totals = {}  # no billed total
         warnings = reconcile_amounts(line_items, totals)
         assert warnings == []
+
+
+class TestModifierAppropriateness:
+    """P4 #21 — a valid modifier used on the wrong code is flagged (LOW)."""
+
+    def _validate(self, cpt: str, modifiers: list[str]):
+        from app.models import LineItem
+
+        line = LineItem(
+            id="LI-MOD",
+            cpt_hcpcs=cpt,
+            charge_amount=100.0,
+            modifiers=modifiers,
+            code_confidence=FieldConfidence(ocr_confidence=0.95, extraction_confidence=0.9),
+            amount_confidence=FieldConfidence(ocr_confidence=0.95, extraction_confidence=0.9),
+        )
+        bill = _make_bill([line])
+        svc = ValidationService()
+        result = svc.validate(bill)
+        return result, line
+
+    def test_modifier_25_on_non_em_code_is_flagged(self):
+        result, _ = self._validate("93000", ["25"])  # ECG, not E/M
+        assert any(w.code == "MODIFIER_INAPPROPRIATE" for w in result.warnings)
+
+    def test_modifier_25_on_em_code_is_allowed(self):
+        result, _ = self._validate("99214", ["25"])  # E/M
+        assert not any(w.code == "MODIFIER_INAPPROPRIATE" for w in result.warnings)
+
+    def test_side_modifier_on_em_code_is_flagged(self):
+        result, _ = self._validate("99214", ["LT"])  # E/M is not lateral
+        assert any(w.code == "MODIFIER_INAPPROPRIATE" for w in result.warnings)
+
+    def test_component_modifier_on_imaging_is_allowed(self):
+        # 71046 chest x-ray — professional component is appropriate.
+        result, _ = self._validate("71046", ["26"])
+        assert not any(w.code == "MODIFIER_INAPPROPRIATE" for w in result.warnings)
+
+    def test_valid_modifier_on_unknown_cpt_does_not_fire(self):
+        # Conservative: unknown CPT -> no appropriateness claim.
+        result, _ = self._validate("99999", ["25"])
+        assert not any(w.code == "MODIFIER_INAPPROPRIATE" for w in result.warnings)
