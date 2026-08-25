@@ -13,6 +13,16 @@ import pytest
 
 from app.api.routes.documents import _mark_document_error, _process_document_background
 from app.schemas import DocumentStatus
+from app.services.ingestion import DocumentExtraction
+
+
+def _extraction():
+    """A realistic ingestion result for the background pipeline."""
+    return DocumentExtraction(
+        text="raw ocr text",
+        method="pdf_text",
+        layout_json={"engine": "pypdf", "pages": [{"page": 1, "text_len": 13}]},
+    )
 
 
 class FakeDocument:
@@ -99,7 +109,7 @@ async def test_success_persists_result_before_letter_ready():
     with patch("app.database.AsyncSessionLocal") as mock_local, \
          patch("app.api.routes.documents.run_pipeline", new=AsyncMock(return_value=result)) as mock_run, \
          patch("app.api.routes.documents.update_document_status", new=fake_update_status), \
-         patch("app.api.routes.documents.extract_document_text", new=AsyncMock(return_value="raw ocr text")):
+         patch("app.api.routes.documents.extract_document_text", new=AsyncMock(return_value=_extraction())):
         mock_local.return_value = make_ctx(session)
 
         await _process_document_background("doc-1", "bill.pdf")
@@ -107,6 +117,8 @@ async def test_success_persists_result_before_letter_ready():
     mock_run.assert_awaited_once_with(
         "doc-1", "bill.pdf",
         raw_ocr_text="raw ocr text",
+        text_extraction_method="pdf_text",
+        layout_json={"engine": "pypdf", "pages": [{"page": 1, "text_len": 13}]},
     )
     assert doc.result_json == result.model_dump()
 
@@ -151,7 +163,7 @@ async def test_exception_always_marks_document_error():
     # runs against the FakeSession so the test is faithful to production.
     with patch("app.database.AsyncSessionLocal") as mock_local, \
          patch("app.api.routes.documents.run_pipeline", new=failing_run), \
-         patch("app.api.routes.documents.extract_document_text", new=AsyncMock(return_value="raw ocr text")):
+         patch("app.api.routes.documents.extract_document_text", new=AsyncMock(return_value=_extraction())):
         mock_local.side_effect = [MainCtx(), ErrorCtx()]
 
         await _process_document_background("doc-1", "bill.pdf")
@@ -195,7 +207,7 @@ async def test_error_path_fresh_session_even_if_commit_fails():
     # triggers the simulated failure; the error path then uses a fresh session.
     with patch("app.database.AsyncSessionLocal") as mock_local, \
          patch("app.api.routes.documents.run_pipeline", new=never_called_run), \
-         patch("app.api.routes.documents.extract_document_text", new=AsyncMock(return_value="raw ocr text")):
+         patch("app.api.routes.documents.extract_document_text", new=AsyncMock(return_value=_extraction())):
         mock_local.side_effect = [MainCtx(), ErrorCtx()]
 
         await _process_document_background("doc-1", "bill.pdf")

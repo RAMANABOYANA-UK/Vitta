@@ -72,6 +72,7 @@ def _init_audit() -> Dict[str, Any]:
         "pipeline_version": "0.3.0",
         "started_at": datetime.now(timezone.utc).isoformat(),
         "extraction_path": None,
+        "text_extraction": {"method": "none", "layout_json": None},
         "rules_engine": {
             "enabled": settings.RULES_ENGINE_ENABLED,
             "flags_added": 0,
@@ -97,6 +98,8 @@ async def run_pipeline(
     document_id: str,
     original_filename: str,
     raw_ocr_text: str | None = None,
+    text_extraction_method: str | None = None,
+    layout_json: dict | None = None,
 ) -> ParsedBill:
     """
     Fully observable pipeline.
@@ -105,6 +108,12 @@ async def run_pipeline(
     logger.info("Pipeline started | document_id=%s", document_id)
     audit = _init_audit()
     t0 = time.perf_counter()
+
+    # Honest record of how the document text was produced (or that none was).
+    audit["text_extraction"] = {
+        "method": text_extraction_method or "none",
+        "layout_json": layout_json,
+    }
 
     # Optional demo delay
     if settings.PIPELINE_DELAY_SECONDS > 0:
@@ -118,6 +127,7 @@ async def run_pipeline(
         document_id=document_id,
         original_filename=original_filename,
         raw_ocr_text=raw_ocr_text,
+        layout_json=layout_json,
     )
     audit["timings_ms"]["extraction"] = round((time.perf_counter() - t_stage) * 1000, 1)
 

@@ -43,6 +43,12 @@ class Settings(BaseSettings):
     # only; a multi-worker or multi-instance deployment needs a shared store (Redis).
     UPLOAD_RATE_LIMIT_PER_MINUTE: int = 20
 
+    # Ingestion / OCR.
+    # Default False on purpose: the ingestion path only ever claims to have read a
+    # real document when it actually did. A text-layer PDF needs no OCR; image and
+    # scanned-PDF bills require OCR, which needs pytesseract + a tesseract binary.
+    OCR_ENABLED: bool = False
+
     # CORS: an explicit allowlist of browser origins. A wildcard ("*") is invalid
     # together with allow_credentials=True, so we never use one. Comma-separated.
     CORS_ALLOWED_ORIGINS: str = (

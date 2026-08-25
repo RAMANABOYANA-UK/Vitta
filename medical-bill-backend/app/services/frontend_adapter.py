@@ -461,6 +461,12 @@ def to_frontend_bill(result: Optional[Dict[str, Any]], document_id: Optional[str
     # UI must warn that the figures below are sample data, not their real bill.
     extraction_mode = _extraction_mode((result.get("audit") or {}).get("extraction_path"))
     extraction_warnings = result.get("extraction_warnings") or result.get("extractionWarnings") or []
+    # Honest record of how the document text was produced ("pdf_text" | "ocr" |
+    # "none"), when the pipeline recorded it. Lets clients distinguish a real
+    # PDF read from sample data without over-claiming structured extraction.
+    text_extraction_method = (
+        ((result.get("audit") or {}).get("text_extraction") or {}).get("method") or None
+    )
 
     bill: Dict[str, Any] = {
         "documentId": doc_id,
@@ -494,6 +500,8 @@ def to_frontend_bill(result: Optional[Dict[str, Any]], document_id: Optional[str
         # "sample" | "live" | None. Frontend shows a degraded-mode banner when
         # this is "sample" (data was synthesized, not read from the upload).
         "extractionMode": extraction_mode,
+        # How the raw document text was produced, or None if not recorded.
+        "textExtractionMethod": text_extraction_method,
     }
 
     # Harmless extra field (frontend ignores unknown keys): the verified appeal

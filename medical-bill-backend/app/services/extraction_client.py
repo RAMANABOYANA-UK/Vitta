@@ -28,6 +28,7 @@ async def extract_and_score(
     document_id: str,
     original_filename: str,
     raw_ocr_text: Optional[str] = None,
+    layout_json: Optional[dict] = None,
 ) -> ParsedBill:
     """
     Obtain a structured + scored ParsedBill.
@@ -48,6 +49,7 @@ async def extract_and_score(
     payload = {
         "document_id": document_id,
         "raw_ocr_text": raw_ocr_text or "",
+        "layout_json": layout_json,
     }
 
     if not payload["raw_ocr_text"]:

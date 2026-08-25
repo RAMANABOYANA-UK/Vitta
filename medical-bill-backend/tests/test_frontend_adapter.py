@@ -255,6 +255,13 @@ def test_bill():
     # "mock" -> "sample" (data was synthesized, not read from the upload).
     check(b["extractionMode"] == "sample", "extractionMode 'sample' when extraction_path == mock")
 
+    # textExtractionMethod honestly surfaces HOW the raw text was produced.
+    check(b["textExtractionMethod"] is None, "textExtractionMethod None when not recorded")
+    r_tex = make_result()
+    r_tex["audit"]["text_extraction"] = {"method": "pdf_text", "layout_json": {"engine": "pypdf"}}
+    check(adapter.to_frontend_bill(r_tex)["textExtractionMethod"] == "pdf_text",
+          "textExtractionMethod 'pdf_text' when audit records it")
+
     # A real extraction path surfaces as "live" (no banner).
     r_live = make_result()
     r_live["audit"]["extraction_path"] = "member2"

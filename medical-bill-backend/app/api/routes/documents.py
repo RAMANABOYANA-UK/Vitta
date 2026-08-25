@@ -453,12 +453,16 @@ async def _process_document_background(
 
             # Step 2: Run the full pipeline (extraction → rules → letter)
             if hasattr(document, "storage_key"):
-                raw_text = await extract_document_text(
+                extraction = await extract_document_text(
                     storage_key=document.storage_key,
                     content_type=document.content_type,
                 )
                 result = await run_pipeline(
-                    document_id, original_filename, raw_ocr_text=raw_text
+                    document_id,
+                    original_filename,
+                    raw_ocr_text=extraction.text,
+                    text_extraction_method=extraction.method,
+                    layout_json=extraction.layout_json,
                 )
             else:
                 # Keep lightweight state-machine fakes usable in unit tests.
