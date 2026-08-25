@@ -203,6 +203,14 @@ class LineItem(BaseModel):
     modifiers: List[str] = Field(
         default_factory=list, description="CPT modifier code(s)"
     )
+    place_of_service: Optional[str] = Field(
+        default=None,
+        description=(
+            "Place-of-service code (CMS POS). Used to derive a provider-type "
+            "feature for scoring. E.g. '11' office, '21' inpatient hospital, "
+            "'22' outpatient hospital, '23' emergency room."
+        ),
+    )
     flags: List[Flag] = Field(
         default_factory=list, description="Flags raised on this line item"
     )

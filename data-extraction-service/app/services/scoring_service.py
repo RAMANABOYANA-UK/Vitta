@@ -10,11 +10,13 @@ can consume them directly.
 
 from __future__ import annotations
 
+import hashlib
 import logging
 from typing import Dict, List, Optional, Tuple
 
 from app.config import settings
 from app.ml.models import AppealSuccessModel, PricingAnomalyModel, get_models
+from app.ml.synthetic_data import GEOGRAPHIES, PAYERS
 from app.models import (
     AppealPrediction,
     AppealSuccess,
@@ -66,10 +68,10 @@ class ScoringService:
         for line in result.line_items:
             try:
                 anomaly_prob, anomaly_score, is_anomalous, anomaly_expl = (
-                    self._score_line_anomaly(line)
+                    self._score_line_anomaly(bill, line)
                 )
                 appeal_prob, appeal_score, recommendation, appeal_expl = (
-                    self._score_line_appeal(line, is_anomalous)
+                    self._score_line_appeal(bill, line, is_anomalous)
                 )
 
                 line_anomaly_scores.append(anomaly_prob)
@@ -178,13 +180,13 @@ class ScoringService:
     # Per-line scoring
     # ------------------------------------------------------------------
     def _score_line_anomaly(
-        self, line: LineItem
+        self, bill: ParsedBill, line: LineItem
     ) -> Tuple[float, float, bool, List[Dict]]:
         """Score a single line for pricing anomaly."""
         cpt = line.cpt_hcpcs or "99213"
-        geo = self._geography_for_line(line)
-        prov = self._provider_type_for_line(line)
-        payer = self._payer_for_line(line)
+        geo = self._geography_for(bill, line)
+        prov = self._provider_type_for(bill, line)
+        payer = self._payer_for(bill)
         units = line.units or 1.0
         charge = line.charge_amount or 0.0
         allowed = line.allowed_amount or 0.0
@@ -201,13 +203,13 @@ class ScoringService:
         return prob, score, is_anomalous, expl
 
     def _score_line_appeal(
-        self, line: LineItem, is_anomalous: bool
+        self, bill: ParsedBill, line: LineItem, is_anomalous: bool
     ) -> Tuple[float, float, str, List[Dict]]:
         """Score a single line for appeal success."""
         cpt = line.cpt_hcpcs or "99213"
-        geo = self._geography_for_line(line)
-        prov = self._provider_type_for_line(line)
-        payer = self._payer_for_line(line)
+        geo = self._geography_for(bill, line)
+        prov = self._provider_type_for(bill, line)
+        payer = self._payer_for(bill)
         units = line.units or 1.0
         charge = line.charge_amount or 0.0
         allowed = line.allowed_amount or 0.0
@@ -225,24 +227,92 @@ class ScoringService:
         return prob, score, recommendation, expl
 
     # ------------------------------------------------------------------
-    # Feature helpers
+    # Feature derivation — closed the "hardcoded features" gap (P3 #16).
+    #
+    # These derive real values from the bill where possible and only fall
+    # back to a (now configurable) default when nothing is present:
+    #   * payer         -> from bill.payer.name, projected stably onto the
+    #                      model's known payer categories.
+    #   * provider_type -> from the line's place_of_service (CMS POS), else
+    #                      from provider name keywords.
+    #   * geography     -> from the provider's state, where available.
     # ------------------------------------------------------------------
-    @staticmethod
-    def _geography_for_line(line: LineItem) -> str:
-        """Best-effort geography. Defaults to 'NY' (a common default)."""
-        # In a real deployment, geography would come from the provider's
-        # location or the document metadata. For now, default.
-        return "NY"
 
-    @staticmethod
-    def _provider_type_for_line(line: LineItem) -> str:
-        """Map place of service to a provider type."""
-        # The Vitta LineItem doesn't carry place_of_service; default to primary_care.
-        return "primary_care"
+    # CMS place-of-service code -> the model's provider_type categories
+    # (must be a member of PROVIDER_TYPES).
+    _POS_TO_PROVIDER_TYPE: Dict[str, str] = {
+        "11": "primary_care",  # office
+        "12": "primary_care",  # home
+        "13": "primary_care",  # assisted living
+        "31": "primary_care",  # skilled nursing
+        "32": "primary_care",  # nursing home
+        "21": "hospital",  # inpatient hospital
+        "22": "hospital",  # outpatient hospital
+        "23": "emergency",  # emergency room
+        "24": "outpatient_clinic",  # ambulatory surgical center
+        "19": "outpatient_clinic",  # off-campus outpatient hospital
+        "20": "outpatient_clinic",  # urgent care
+        "06": "laboratory",  # independent clinic / lab
+        "81": "laboratory",  # independent lab
+        "73": "radiology",  # diagnostic radiology
+        "92": "radiology",  # PET facility
+        "49": "physical_therapy",  # independent clinic
+    }
 
-    @staticmethod
-    def _payer_for_line(line: LineItem) -> str:
-        return "payer_a"
+    # Provider-name keyword -> provider_type (checked case-insensitively).
+    _PROVIDER_KW_TO_TYPE: Tuple[Tuple[str, str], ...] = (
+        ("hospital", "hospital"),
+        ("medical center", "hospital"),
+        ("urgent care", "outpatient_clinic"),
+        ("clinic", "outpatient_clinic"),
+        ("laboratory", "laboratory"),
+        ("radiology", "radiology"),
+        ("imaging", "radiology"),
+        ("emergency", "emergency"),
+        ("physical therapy", "physical_therapy"),
+        ("therapy", "physical_therapy"),
+    )
+
+    def _geography_for(self, bill: ParsedBill, line: LineItem) -> str:
+        """Best-effort geography from the provider's state (2-letter, in the
+        model's known set); otherwise the configured default."""
+        provider = bill.provider or {}
+        state = None
+        for key in ("state", "state_code", "address_state"):
+            val = provider.get(key)
+            if isinstance(val, str) and val.strip():
+                state = val.strip().upper()
+                break
+        if state in GEOGRAPHIES:
+            return state
+        return settings.default_geography
+
+    def _provider_type_for(self, bill: ParsedBill, line: LineItem) -> str:
+        """Derive provider_type from place-of-service, then provider name."""
+        pos = (line.place_of_service or "").strip() or None
+        if pos:
+            mapped = self._POS_TO_PROVIDER_TYPE.get(pos)
+            if mapped:
+                return mapped
+        provider_name = str((bill.provider or {}).get("name") or "").lower()
+        for keyword, ptype in self._PROVIDER_KW_TO_TYPE:
+            if keyword in provider_name:
+                return ptype
+        return settings.default_provider_type
+
+    def _payer_for(self, bill: ParsedBill) -> str:
+        """Payer feature: a stable projection of the real payer name onto the
+        model's known categories, so the same payer always maps the same way and
+        it is never a constant."""
+        name = (bill.payer or {}).get("name")
+        if not isinstance(name, str) or not name.strip():
+            return settings.default_payer
+        key = name.strip().lower()
+        if key in PAYERS:
+            return key
+        # Stable projection onto the training categories (never Python hash()).
+        digest = int(hashlib.sha256(key.encode("utf-8")).hexdigest(), 16)
+        return PAYERS[digest % len(PAYERS)] if PAYERS else settings.default_payer
 
 
 def get_scoring_service() -> ScoringService:

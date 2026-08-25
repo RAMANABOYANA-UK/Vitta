@@ -49,6 +49,15 @@ class Settings(BaseSettings):
     synthetic_seed: int = 42
     synthetic_n_samples: int = 20000
 
+    # --- Scoring feature fallbacks ---
+    # Used only when a real value cannot be derived from the bill (so the
+    # hardcoded-feature gap is closed: geography/provider-type/payer are now
+    # derived from the document where possible, and these are the honest
+    # fallbacks otherwise).
+    default_geography: str = "NY"
+    default_provider_type: str = "primary_care"
+    default_payer: str = "payer_a"
+
 
 @lru_cache
 def get_settings() -> Settings:
