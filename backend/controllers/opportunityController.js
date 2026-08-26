@@ -2,6 +2,7 @@ const Opportunity = require('../models/Opportunity');
 const SavedOpportunity = require('../models/SavedOpportunity');
 const User = require('../models/User');
 const { predictMatchScore } = require('../utils/aiHelper');
+const { deliverEmail } = require('../utils/emailSender');
 
 const getOpportunities = async (req, res, next) => {
   try {
@@ -92,6 +93,23 @@ const applyOpportunity = async (req, res, next) => {
     });
 
     await opportunity.save();
+
+    // Send application confirmation email to the user
+    const user = await User.findById(req.user._id).select('name email');
+    if (user?.email) {
+      const subject = `✅ Application submitted — ${opportunity.title}`;
+      const html = `
+        <div style="font-family:Helvetica,Arial,sans-serif;max-width:560px;margin:0 auto;padding:24px;">
+          <h2 style="color:#b86b7d;">Application Submitted!</h2>
+          <p>Hi ${user.name},</p>
+          <p>Your application for <strong>${opportunity.title}</strong> at <strong>${opportunity.company}</strong> has been recorded in Aviraa.</p>
+          <p>We will keep the status updated inside the Opportunities tab.</p>
+          <p>💜 Team Aviraa</p>
+        </div>
+      `;
+      await deliverEmail(user.email, subject, html);
+    }
+
     res.status(201).json({ message: 'Application submitted successfully', applied: true });
   } catch (error) {
     next(error);

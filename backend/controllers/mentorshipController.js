@@ -1,5 +1,7 @@
 const Mentor = require('../models/Mentor');
 const User = require('../models/User');
+const MentorshipRequest = require('../models/MentorshipRequest');
+const { deliverEmail } = require('../utils/emailSender');
 
 // Default initial mentors dataset if DB is empty
 const DEFAULT_MENTORS = [
@@ -125,23 +127,116 @@ const requestMentorship = async (req, res, next) => {
     }
 
     const { note, topic, preferredTime } = req.body;
+    const user = await User.findById(req.user._id).select('name email');
+
+    // Prevent duplicate pending request
+    const existing = await MentorshipRequest.findOne({
+      user: req.user._id,
+      mentor: mentor._id,
+      status: 'pending'
+    });
+
+    if (existing) {
+      return res.status(200).json({
+        success: true,
+        message: 'You already have a pending request with this mentor.',
+        request: existing
+      });
+    }
+
+    const request = await MentorshipRequest.create({
+      user: req.user._id,
+      mentor: mentor._id,
+      topic: topic || 'Career Growth',
+      preferredTime: preferredTime || 'Flexible',
+      note: note || '',
+      status: 'pending'
+    });
+
+    // Email to user (confirmation)
+    const userSubject = `🌱 Mentorship request sent to ${mentor.name}`;
+    const userHtml = `
+      <div style="font-family:Helvetica,Arial,sans-serif;max-width:560px;margin:0 auto;padding:24px;">
+        <h2 style="color:#b86b7d;">Request Submitted!</h2>
+        <p>Hi ${user?.name || 'there'},</p>
+        <p>Your mentorship request has been sent to <strong>${mentor.name}</strong> (${mentor.title}).</p>
+        <ul>
+          <li><strong>Topic:</strong> ${request.topic}</li>
+          <li><strong>Preferred time:</strong> ${request.preferredTime}</li>
+          <li><strong>Note:</strong> ${request.note || '—'}</li>
+        </ul>
+        <p>We will notify you when they respond.</p>
+        <p>💜 Team Aviraa</p>
+      </div>
+    `;
+    if (user?.email) {
+      await deliverEmail(user.email, userSubject, userHtml);
+    }
+
+    // Log mentor notification (Mentor has no email field in the current model;
+    // when a mentor email field is added, deliver here too).
+    console.log(`📧 Mentorship request created: ${user?.name || 'user'} → ${mentor.name} | topic: ${request.topic}`);
+
+    const populated = await MentorshipRequest.findById(request._id)
+      .populate('mentor', 'name title company')
+      .populate('user', 'name email');
 
     res.status(201).json({
       success: true,
-      message: `Mentorship request sent to ${mentor.name}! They will confirm via email.`,
-      request: {
-        mentorId: mentor._id,
-        mentorName: mentor.name,
-        topic: topic || 'Career Growth',
-        preferredTime: preferredTime || 'Flexible',
-        note: note || '',
-        status: 'Pending',
-        createdAt: new Date()
-      }
+      message: `Mentorship request sent to ${mentor.name}! You will receive a confirmation email.`,
+      request: populated
     });
+  } catch (error) {
+    if (error.code === 11000) {
+      return res.status(200).json({
+        success: true,
+        message: 'You already have a pending request with this mentor.'
+      });
+    }
+    next(error);
+  }
+};
+
+// @desc    Get current user's mentorship requests
+// @route   GET /api/mentorship/requests/me
+const getMyRequests = async (req, res, next) => {
+  try {
+    const requests = await MentorshipRequest.find({ user: req.user._id })
+      .populate('mentor', 'name title company category expertise rating')
+      .sort({ createdAt: -1 });
+
+    res.json(requests);
   } catch (error) {
     next(error);
   }
 };
 
-module.exports = { getMentors, requestMentorship };
+// @desc    Update request status (for future mentor/admin panel)
+// @route   PATCH /api/mentorship/requests/:id
+const updateRequestStatus = async (req, res, next) => {
+  try {
+    const { status } = req.body;
+    const allowed = ['pending', 'accepted', 'rejected', 'completed', 'cancelled'];
+    if (!allowed.includes(status)) {
+      return res.status(400).json({ message: 'Invalid status' });
+    }
+
+    const request = await MentorshipRequest.findOne({
+      _id: req.params.id,
+      user: req.user._id
+    });
+
+    if (!request) {
+      return res.status(404).json({ message: 'Request not found' });
+    }
+
+    request.status = status;
+    await request.save();
+
+    res.json({ success: true, request });
+  } catch (error) {
+    next(error);
+  }
+};
+
+module.exports = { getMentors, requestMentorship, getMyRequests, updateRequestStatus };

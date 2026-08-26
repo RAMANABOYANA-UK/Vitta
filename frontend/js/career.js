@@ -155,9 +155,17 @@ async function loadLearningPath() {
         <span class="tag tag-sage">Priority ${step.priority}</span>
         <h4>${step.skill}</h4>
         <p>Level ${step.currentLevel}% → Target ${step.targetLevel}%</p>
+        <div class="resource-links">
+          ${step.resources.map((r, ri) => `
+            <a href="${r.url}" target="_blank" rel="noopener noreferrer" class="resource-link" onclick="event.stopPropagation();">
+              <span class="resource-platform">${r.platform}</span>
+              <span class="resource-title">${r.title}</span>
+              <span class="resource-duration">${r.duration || ''}</span>
+            </a>
+          `).join('')}
+        </div>
         <div class="resource-footer">
-          <span>${step.resources[0]?.platform || 'Recommended'}</span>
-          <button class="btn btn-outline btn-sm">${step.resources[0]?.title || 'Open'}</button>
+          <span>${step.resources.length} resource${step.resources.length !== 1 ? 's' : ''}</span>
         </div>
       </div>
     `).join('');

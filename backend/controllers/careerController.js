@@ -5,32 +5,32 @@ const { generateDailyInsight, generateAIResponse } = require('../utils/aiHelper'
 // Learning resources keyed by skill category for personalized learning path generation
 const LEARNING_RESOURCES = {
   'leadership': [
-    { title: 'Leading High-Performing Teams', platform: 'Coursera', duration: '6 weeks', url: '#' },
-    { title: 'Situational Leadership Masterclass', platform: 'LinkedIn Learning', duration: '3 hours', url: '#' }
+    { title: 'Leading High-Performing Teams', platform: 'Coursera', duration: '6 weeks', url: 'https://www.coursera.org/learn/leading-teams' },
+    { title: 'Situational Leadership', platform: 'LinkedIn Learning', duration: '1.5 hours', url: 'https://www.linkedin.com/learning/topics/leadership-and-management' }
   ],
   'product management': [
-    { title: 'Product Management Essentials', platform: 'Coursera', duration: '8 weeks', url: '#' },
-    { title: 'From Idea to Launch: PM Playbook', platform: 'Udemy', duration: '12 hours', url: '#' }
+    { title: 'Digital Product Management', platform: 'Coursera', duration: '8 weeks', url: 'https://www.coursera.org/specializations/digital-product-management' },
+    { title: 'Product Management Fundamentals', platform: 'freeCodeCamp', duration: 'Self-paced', url: 'https://www.freecodecamp.org/news/product-management-for-engineers/' }
   ],
   'data science': [
-    { title: 'Data Science with Python', platform: 'Coursera', duration: '10 weeks', url: '#' },
-    { title: 'SQL for Data Analysis', platform: 'Mode Analytics', duration: '4 hours', url: '#' }
+    { title: 'IBM Data Science Professional Certificate', platform: 'Coursera', duration: '10 months', url: 'https://www.coursera.org/professional-certificates/ibm-data-science' },
+    { title: 'SQL for Data Analysis', platform: 'Mode Analytics', duration: '4 hours', url: 'https://mode.com/sql-tutorial/' }
   ],
   'software': [
-    { title: 'System Design for Interviews', platform: 'Educative', duration: '5 weeks', url: '#' },
-    { title: 'Advanced JavaScript Patterns', platform: 'Frontend Masters', duration: '8 hours', url: '#' }
+    { title: 'System Design for Interviews', platform: 'freeCodeCamp', duration: 'Self-paced', url: 'https://www.freecodecamp.org/news/systems-design-for-interviews/' },
+    { title: 'The Odin Project – Full Stack', platform: 'The Odin Project', duration: 'Self-paced', url: 'https://www.theodinproject.com/' }
   ],
   'communication': [
-    { title: 'Influential Communication', platform: 'Coursera', duration: '4 weeks', url: '#' },
-    { title: 'Public Speaking for Professionals', platform: 'MasterClass', duration: '3 hours', url: '#' }
+    { title: 'Successful Negotiation', platform: 'Coursera', duration: '4 weeks', url: 'https://www.coursera.org/learn/negotiation' },
+    { title: 'Public Speaking for Professionals', platform: 'YouTube', duration: 'Ongoing', url: 'https://www.youtube.com/results?search_query=public+speaking+for+professionals' }
   ],
   'ai': [
-    { title: 'AI for Everyone', platform: 'Coursera', duration: '4 weeks', url: '#' },
-    { title: 'Building AI Products', platform: 'Udemy', duration: '10 hours', url: '#' }
+    { title: 'AI For Everyone', platform: 'Coursera (Andrew Ng)', duration: '4 weeks', url: 'https://www.coursera.org/learn/ai-for-everyone' },
+    { title: 'Practical Deep Learning', platform: 'fast.ai', duration: 'Self-paced', url: 'https://www.fast.ai/' }
   ],
   'general': [
-    { title: 'Career Growth Fundamentals', platform: 'LinkedIn Learning', duration: '2 hours', url: '#' },
-    { title: 'Personal Branding for Professionals', platform: 'Skillshare', duration: '90 min', url: '#' }
+    { title: 'Career Success Specialization', platform: 'Coursera', duration: '6 months', url: 'https://www.coursera.org/specializations/career-success' },
+    { title: 'Personal Branding', platform: 'LinkedIn Learning', duration: '1 hour', url: 'https://www.linkedin.com/learning/topics/personal-branding' }
   ]
 };
 

@@ -2,6 +2,7 @@ const jwt = require('jsonwebtoken');
 const User = require('../models/User');
 const Career = require('../models/Career');
 const Wellness = require('../models/Wellness');
+const emailSender = require('../utils/emailSender');
 
 // Generate JWT token
 const generateToken = (id) => {
@@ -53,6 +54,13 @@ const signup = async (req, res, next) => {
 
     // Generate token
     const token = generateToken(user._id);
+
+    // Send welcome email (uses SMTP if configured, otherwise logs)
+    try {
+      await emailSender.sendWelcomeEmail(user);
+    } catch (welcomeErr) {
+      console.warn('Welcome email could not be delivered:', welcomeErr.message);
+    }
 
     res.status(201).json({
       token,
@@ -164,8 +172,6 @@ const user = await User.findByIdAndUpdate(req.user._id, updates, {
     next(error);
   }
 };
-
-const emailSender = require('../utils/emailSender');
 
 // @desc    Send test digest email to logged in user
 // @route   POST /api/auth/send-digest
