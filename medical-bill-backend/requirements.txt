@@ -11,3 +11,8 @@ boto3==1.35.0
 httpx==0.27.0
 aiofiles==24.1.0
 pypdf==5.1.0
+# OCR for images / scanned PDFs (enabled via OCR_ENABLED). pytesseract wraps the
+# tesseract binary (which must be installed and on PATH separately); PyMuPDF
+# rasterizes scanned PDF pages before OCR.
+pytesseract==0.3.10
+PyMuPDF==1.24.9

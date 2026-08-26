@@ -127,7 +127,7 @@ def _pdf_text(reader: Any) -> str:
     return "\n".join(chunks).strip()
 
 
-def _ocr_image_text(contents: bytes) -> str:
+def _ocr_image_text(contents: bytes, lang: str = "eng") -> str:
     """OCRed text from an image via pytesseract."""
     try:
         import pytesseract  # type: ignore
@@ -140,11 +140,83 @@ def _ocr_image_text(contents: bytes) -> str:
     try:
         image = Image.open(io.BytesIO(contents))
         image.load()
-        return (pytesseract.image_to_string(image) or "").strip()
-    except (UnidentifiedImageError, OSError, Exception) as exc:
+        return (pytesseract.image_to_string(image, lang=lang) or "").strip()
+    except (UnidentifiedImageError, OSError) as exc:
         raise IngestionError(
             "unreadable_image", "The uploaded image could not be read for OCR."
         ) from exc
+    except Exception as exc:  # pragma: no cover - tesseract binary errors
+        raise IngestionError(
+            "ocr_failed",
+            "OCR could not be run on this image (is the tesseract binary installed and on PATH?).",
+        ) from exc
+
+
+def _ocr_available() -> bool:
+    """Return True only if pytesseract is installed AND a tesseract binary is reachable.
+
+    This is the honest gate: OCR code paths exist, but actually running them needs
+    the tesseract engine. We never claim OCR worked unless the binary is present.
+    """
+    try:
+        import pytesseract  # type: ignore
+    except ImportError:
+        return False
+    try:
+        pytesseract.get_tesseract_version()
+    except Exception:
+        return False
+    return True
+
+
+def _ocr_scanned_pdf(contents: bytes, lang: str = "eng") -> str:
+    """OCR a scanned (text-less) PDF: rasterize each page with PyMuPDF, then run
+    pytesseract over every page image. Returns concatenated page text.
+
+    Raises IngestionError with an honest code when the renderer or OCR engine is
+    unavailable or the PDF cannot be rasterized.
+    """
+    try:
+        import pymupdf  # type: ignore
+    except ImportError:  # pragma: no cover - env without pymupdf
+        raise IngestionError(
+            "pdf_ocr_unavailable",
+            "Scanned-PDF OCR requires PyMuPDF (pymupdf) to rasterize pages, which is not installed.",
+        )
+    try:
+        import pytesseract  # type: ignore
+    except ImportError as exc:  # pragma: no cover
+        raise IngestionError(
+            "ocr_not_configured",
+            "Scanned-PDF OCR requires pytesseract, which is not installed.",
+        ) from exc
+
+    if not _ocr_available():
+        raise IngestionError(
+            "ocr_not_configured",
+            "OCR is enabled but no tesseract binary is available. Install tesseract and ensure it is on PATH.",
+        )
+
+    try:
+        doc = pymupdf.open(stream=contents, filetype="pdf")
+    except Exception as exc:
+        raise IngestionError(
+            "unreadable_pdf", "The scanned PDF could not be opened for OCR."
+        ) from exc
+
+    chunks: List[str] = []
+    try:
+        for page in doc:
+            pix = page.get_pixmap(dpi=200)  # reasonable OCR resolution
+            img_bytes = pix.tobytes("png")
+            chunks.append(_ocr_image_text(img_bytes, lang=lang))
+    except Exception as exc:  # pragma: no cover - defensive
+        raise IngestionError(
+            "ocr_failed", "OCR could not be run on a page of this PDF."
+        ) from exc
+    finally:
+        doc.close()
+    return "\n".join(c for c in chunks if c).strip()
 
 
 def extract_document_content(
@@ -173,15 +245,22 @@ def extract_document_content(
                 layout_json=_pdf_layout(reader),
                 content_type=ct,
             )
-        # Scanned PDF: no selectable text layer.
+        # Scanned PDF: no selectable text layer — run OCR when enabled.
         if not ocr_enabled:
             raise IngestionError(
                 "scanned_pdf_needs_ocr",
                 "This PDF has no selectable text (it is a scan). Enable OCR to read it.",
             )
-        raise IngestionError(
-            "pdf_ocr_unavailable",
-            "Scanned-PDF OCR requires an image renderer that is not configured.",
+        ocr_text = _ocr_scanned_pdf(contents)
+        if not ocr_text:
+            raise IngestionError(
+                "no_ocr_text", "OCR produced no readable text from this scanned PDF."
+            )
+        return DocumentExtraction(
+            text=ocr_text,
+            method="ocr",
+            layout_json=_pdf_layout(reader),
+            content_type=ct,
         )
 
     if ct in _IMAGE_CONTENT_TYPES:
@@ -189,6 +268,12 @@ def extract_document_content(
             raise IngestionError(
                 "ocr_not_configured",
                 "Image OCR is not configured. Enable OCR to read image bills.",
+            )
+        if not _ocr_available():
+            raise IngestionError(
+                "ocr_not_configured",
+                "OCR is enabled but no tesseract binary is available. Install "
+                "tesseract and ensure it is on PATH.",
             )
         text = _ocr_image_text(contents)
         if not text:
